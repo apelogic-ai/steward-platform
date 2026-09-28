@@ -43,6 +43,130 @@ def image_parts:
 # OCI chart reference pinned by digest, as helm and helmfile accept it.
 def chart_ref: "\(.reference)@\(.digest)";
 
+# --- Registry mirror ---------------------------------------------------------
+#
+# The platform values' registry block names a mirror per artifact class. A
+# rewrite changes only the registry or host and the leading path of a
+# reference; the tag and the digest stay the BOM's. Every function below takes
+# the platform values as input. See docs/registry-mirroring.md.
+
+# The mirror of one artifact class, or null when it comes from upstream.
+def mirror_of($class): (.registry // {})[$class];
+
+# The BOM class of a product or dependency artifact.
+def image_class($kind): if $kind == "products" then "productImages" else "dependencyImages" end;
+def chart_class($kind): if $kind == "products" then "productCharts" else "dependencyCharts" end;
+
+# host/path (an OCI repository) or scheme://host/path (a URL), rewritten for
+# the mirror $m: the prefix replaces the host, or with keepSourceHost precedes
+# it. Unchanged when $m is null.
+def mirror_location($m):
+  if $m == null then .
+  else
+    (capture("^(?<scheme>[a-z]+://)?(?<host>[^/]+)/(?<path>.+)$")
+      // error("cannot mirror \(.): not a host/path reference"))
+    | "\($m.prefix)/\(if $m.keepSourceHost then "\(.host)/" else "" end)\(.path)"
+  end;
+
+# A BOM image reference, registry/repository:tag@digest, from its class's
+# mirror.
+def mirror_image($class; $ref):
+  mirror_of($class) as $m
+  | ($ref | image_parts) as $p
+  | "\($p.repository | mirror_location($m)):\($p.tag)@\($p.digest)";
+
+# A BOM chart ({reference, version, digest}) from its class's mirror.
+def mirror_chart($class; $chart):
+  mirror_of($class) as $m
+  | $chart + {reference: ("oci://" + ($chart.reference | ltrimstr("oci://") | mirror_location($m)))};
+
+# A Git repository URL from the gitSources mirror: its exact entry in
+# repositories, else by prefix.
+def mirror_git($url):
+  mirror_of("gitSources") as $m
+  | if $m == null then $url
+    elif ($m.repositories // {})[$url] then $m.repositories[$url]
+    elif $m.prefix then $url | mirror_location($m)
+    else $url end;
+
+# A manifest download URL from the manifests mirror.
+def mirror_manifest_url($url): mirror_of("manifests") as $m | $url | mirror_location($m);
+
+# Image pull secrets, as the charts take them: [{name: ...}].
+def image_pull_secrets: [(.registry.imagePullSecrets // [])[] | {name: .}];
+
+# The Flux access settings (secretRef, provider, certSecretRef) of a class, as
+# source spec fields.
+def mirror_flux_access($class):
+  (mirror_of($class).flux // {}) | with_entries(select(.value != null));
+
+# This repository, for its in-repo steward-edge chart.
+def platform_repository: "https://github.com/apelogic-ai/steward-platform";
+
+# Every artifact in the BOM, or in one BOM profile, with where it comes from
+# and where the platform values mirror it to. Consumed by scripts/mirror-list.sh
+# and scripts/verify-digests.sh --mirror. Kubernetes node images (kind, for
+# tests) are not install artifacts and are left out.
+#
+# Entries of type "oci" (charts and images) carry source and target as
+# repository:tag and sourceRef and targetRef as repository@digest; copying
+# sourceRef to target keeps the digest. "git" entries carry the repository and
+# its ref; "http" entries the URL and its SHA-256.
+def mirror_list($bom; $profile):
+  . as $v
+  | (if $profile == null then null
+     else $bom.profiles[$profile] // error("the BOM has no \($profile) profile") end) as $p
+  | def included($kind; $name): $p == null or any($p[$kind][]; . == $name);
+    def oci($class; $id; $artifact; $repository; $tag; $digest):
+      ($repository | mirror_location($v | mirror_of($class))) as $target
+      | {id: $id, class: $class, type: "oci", artifact: $artifact,
+         source: "\($repository):\($tag)", digest: $digest, sourceRef: "\($repository)@\($digest)",
+         target: "\($target):\($tag)", targetRef: "\($target)@\($digest)",
+         mirrored: (($v | mirror_of($class)) != null)};
+    def git($id; $repository; $ref):
+      ($v | mirror_git($repository)) as $target
+      | {id: $id, class: "gitSources", type: "git", artifact: "git", source: $repository, ref: $ref,
+         target: $target, mirrored: ($target != $repository)};
+    def http($id; $url; $digest):
+      {id: $id, class: "manifests", type: "http", artifact: "manifest", source: $url, digest: $digest,
+       target: ($v | mirror_manifest_url($url)), mirrored: (($v | mirror_of("manifests")) != null)};
+    [ ("products", "dependencies") as $kind
+      | $bom[$kind] | to_entries[] | select(included($kind; .key)) | .key as $name | .value
+      | (.chart // empty
+          | oci(chart_class($kind); "\($kind).\($name).chart"; "chart";
+              (.reference | ltrimstr("oci://")); .version; .digest)),
+        ((.images // {}) | to_entries[]
+          | (.value | image_parts) as $image
+          | oci(image_class($kind); "\($kind).\($name).images.\(.key)"; "image";
+              $image.repository; $image.tag; $image.digest)),
+        # The images of every other tested version (the default's are above).
+        (.images as $default | (.tested // [])[] | .version as $version
+          | (.images // {}) | to_entries[] | select(.value != $default[.key])
+          | (.value | image_parts) as $image
+          | oci(image_class($kind); "\($kind).\($name).tested.\($version).images.\(.key)"; "image";
+              $image.repository; $image.tag; $image.digest)),
+        ((.manifests // []) | to_entries[] | .key as $i | .value
+          | http("\($kind).\($name).manifests.\($i)"; .url; .digest),
+            (.fluxSource.git // empty
+              | git("\($kind).\($name).manifests.\($i).fluxSource.git"; .repository; {tag, commit})))
+    ]
+    # charts/steward-edge, which the task-auth Flux output builds from this
+    # repository at the platform tag.
+    + (if $profile == null or $profile == "task-auth" then
+        [git("platform.charts.steward-edge"; platform_repository; {tag: $bom.platformVersion})]
+      else [] end);
+
+# Refuse a mirror that maps two different upstream artifacts onto one target,
+# for example two registries' same path with keepSourceHost false.
+def mirror_collisions($bom):
+  [mirror_list($bom; null)[]
+    | if .type == "oci" then {target: (.targetRef | sub("@.*$"; "")), source: (.sourceRef | sub("@.*$"; ""))}
+      else {target, source} end]
+  | group_by(.target)
+  | map(select((map(.source) | unique | length) > 1)
+      | "\(map(.source) | unique | join(" and ")) both map to \(.[0].target)")
+  | if length > 0 then error("registry: \(join("; ")); set keepSourceHost true or use distinct prefixes") else . end;
+
 # --- Names the reference install owns ----------------------------------------
 
 def evaluation_issuer_name: "steward-platform-evaluation-ca";
@@ -125,8 +249,8 @@ def steward_run_release($bom):
 
 def steward_values($bom; $ca_bundle):
   . as $v
-  | ($bom.products.steward.images.apiserver | image_parts) as $apiserver
-  | ($bom.products.steward.images.controller | image_parts) as $controller
+  | ($v | mirror_image("productImages"; $bom.products.steward.images.apiserver) | image_parts) as $apiserver
+  | ($v | mirror_image("productImages"; $bom.products.steward.images.controller) | image_parts) as $controller
   | if $apiserver.repository != $controller.repository then
       error("BOM: Steward apiserver and controller images must share one repository")
     else . end
@@ -135,7 +259,10 @@ def steward_values($bom; $ca_bundle):
         repository: $apiserver.repository,
         apiserver: {tag: $apiserver.tag, digest: $apiserver.digest},
         controller: {tag: $controller.tag, digest: $controller.digest}
-      },
+      }
+    }
+  + (if ($v | image_pull_secrets | length) > 0 then {imagePullSecrets: ($v | image_pull_secrets)} else {} end)
+  + {
       execution: {enabled: false},
       serviceAccounts: {
         apiserver: {annotations: ($v.serviceAccounts.steward.apiserver.annotations // {})},
@@ -214,8 +341,8 @@ def steward_values($bom; $ca_bundle):
     else {} end)
   # Deep merge: the web image and NetworkPolicy keys join the ones above.
   | . * (if $v | browser_admin then
-      ($bom.products.steward.images.web | image_parts) as $web
-      | if $web.repository != ($bom.products.steward.images.apiserver | image_parts).repository then
+      ($v | mirror_image("productImages"; $bom.products.steward.images.web) | image_parts) as $web
+      | if $web.repository != .images.repository then
           error("BOM: Steward web and apiserver images must share one repository")
         else . end
       | {
@@ -263,9 +390,11 @@ def steward_values($bom; $ca_bundle):
 # every image pinned to its BOM digest.
 # https://github.com/cert-manager/cert-manager/blob/v1.21.2/deploy/charts/cert-manager/values.yaml
 def cert_manager_values($bom):
-  ($bom.dependencies["cert-manager"].images) as $images
-  | def pinned($component): $images[$component] | image_parts | {repository, tag, digest};
-  {
+  . as $v
+  | ($bom.dependencies["cert-manager"].images) as $images
+  | def pinned($component): $v | mirror_image("dependencyImages"; $images[$component]) | image_parts | {repository, tag, digest};
+  (if ($v | image_pull_secrets | length) > 0 then {global: {imagePullSecrets: ($v | image_pull_secrets)}} else {} end)
+  + {
     crds: {enabled: true, keep: true},
     image: pinned("controller"),
     webhook: {image: pinned("webhook")},
@@ -282,9 +411,12 @@ def evaluation_ca_values:
 # are referenced, never created. Workload exchange and browser HOP-1 stay off.
 def identity_values($bom):
   . as $v
-  | ($bom.products["github-oidc-exchange"].images.exchange | image_parts) as $image
+  | ($v | mirror_image("productImages"; $bom.products["github-oidc-exchange"].images.exchange) | image_parts) as $image
   | {
-      image: {repository: $image.repository, tag: $image.tag, digest: $image.digest},
+      image: (
+        {repository: $image.repository, tag: $image.tag, digest: $image.digest}
+        + (if ($v | image_pull_secrets | length) > 0 then {pullSecrets: ($v | image_pull_secrets)} else {} end)
+      ),
       serviceAccount: {
         create: true,
         name: identity_service_account_name,
@@ -320,15 +452,21 @@ def identity_values($bom):
 # server-side applies first (scripts/apply-manifests.sh).
 # https://github.com/envoyproxy/gateway/blob/v1.9.1/charts/gateway-helm/values.yaml
 def envoy_gateway_values($bom):
-  ($bom.dependencies["envoy-gateway"].images) as $images
+  . as $v
+  | ($bom.dependencies["envoy-gateway"].images) as $images
   | {
       crds: {enabled: false},
-      global: {
-        images: {
-          envoyGateway: {image: $images.controller},
-          envoyProxy: {image: $images.proxy}
+      global: (
+        # global.imagePullSecrets also reaches the Envoy proxies the controller
+        # creates.
+        (if ($v | image_pull_secrets | length) > 0 then {imagePullSecrets: ($v | image_pull_secrets)} else {} end)
+        + {
+          images: {
+            envoyGateway: {image: ($v | mirror_image("dependencyImages"; $images.controller))},
+            envoyProxy: {image: ($v | mirror_image("dependencyImages"; $images.proxy))}
+          }
         }
-      }
+      )
     };
 
 # Values for charts/steward-edge in this repository: Steward's task API routes.
@@ -385,7 +523,7 @@ def postgresql_evaluation_values($bom):
   . as $v
   | {
       name: evaluation_postgres_name,
-      image: ($v | evaluation_postgres_image($bom) | image_parts | {repository, tag, digest}),
+      image: ($v | mirror_image("dependencyImages"; $v | evaluation_postgres_image($bom)) | image_parts | {repository, tag, digest}),
       port: $v.database.port,
       clusterDomain: $v.cluster.domain,
       stewardDatabaseSecret: $v.database.secret
@@ -413,13 +551,13 @@ def helmfile_environment($bom):
       releases: {
         certManager: {
           enabled: ($v | installs_cert_manager),
-          chart: ($bom.dependencies["cert-manager"].chart | chart_ref),
+          chart: ($v | mirror_chart("dependencyCharts"; $bom.dependencies["cert-manager"].chart) | chart_ref),
           version: $bom.dependencies["cert-manager"].chart.version
         },
         evaluationCa: {enabled: ($v | uses_evaluation_issuer)},
         postgresqlEvaluation: {enabled: ($v | uses_evaluation_database)},
         steward: {
-          chart: ($bom.products.steward.chart | chart_ref),
+          chart: ($v | mirror_chart("productCharts"; $bom.products.steward.chart) | chart_ref),
           version: $bom.products.steward.chart.version,
           # Steward renders Gateway API objects itself, so it needs their CRDs.
           routes: ($v | browser_admin)
@@ -427,8 +565,14 @@ def helmfile_environment($bom):
         envoyGateway: (
           {enabled: ($v | installs_edge)}
           + (if $v | installs_edge then
-              {chart: ($bom.dependencies["envoy-gateway"].chart | chart_ref),
+              {chart: ($v | mirror_chart("dependencyCharts"; $bom.dependencies["envoy-gateway"].chart) | chart_ref),
                version: $bom.dependencies["envoy-gateway"].chart.version}
+              # The CRD manifests the presync hook applies, from the manifests
+              # mirror; the hook still checks each against its BOM SHA-256.
+              + (if $v | mirror_of("manifests") then
+                  {manifestUrls: (["gateway-api-crds", "envoy-gateway"]
+                    | map(. as $d | {($d): ($v | mirror_manifest_url($bom.dependencies[$d].manifests[0].url))}) | add)}
+                else {} end)
             else {} end)
         ),
         edgeEvaluationCa: {enabled: ($v | uses_evaluation_gateway)},
@@ -438,20 +582,25 @@ def helmfile_environment($bom):
         identityExchange: (
           {enabled: ($v | task_auth)}
           + (if $v | task_auth then
-              {chart: ($bom.products["github-oidc-exchange"].chart | chart_ref),
+              {chart: ($v | mirror_chart("productCharts"; $bom.products["github-oidc-exchange"].chart) | chart_ref),
                version: $bom.products["github-oidc-exchange"].chart.version}
             else {} end)
         )
       }
-    };
+    }
+  # With a chart mirror, one helmfile OCI repository per chart class, so that
+  # helmfile logs in to its registry with <NAME>_USERNAME and <NAME>_PASSWORD
+  # from the environment when both are set (otherwise Helm's own registry
+  # credentials apply). docs/registry-mirroring.md
+  + ([["productCharts", "steward-platform-product-charts"], ["dependencyCharts", "steward-platform-dependency-charts"]]
+      | map(.[0] as $class | .[1] as $name | ($v | mirror_of($class)) as $m
+          | select($m != null) | {name: $name, host: ($m.prefix | split("/")[0])})
+      | if length > 0 then {registryLogins: .} else {} end);
 
 # --- Flux ---------------------------------------------------------------------
 
 # Flux objects live here; each HelmRelease installs into its own namespace.
 def flux_namespace: "flux-system";
-
-# This repository, for its in-repo steward-edge chart.
-def platform_repository: "https://github.com/apelogic-ai/steward-platform";
 
 # The Helm chart layer of an OCI chart artifact.
 def helm_chart_media_type: "application/vnd.cncf.helm.chart.content.v1.tar+gzip";
@@ -472,7 +621,15 @@ def flux_oci_repository($name; $chart; $operation):
       layerSelector: {mediaType: helm_chart_media_type, operation: $operation}
     }
   };
-def flux_oci_repository($name; $chart): flux_oci_repository($name; $chart; "copy");
+
+# The OCIRepository of a BOM chart of $class, from that class's mirror with
+# its Flux access settings (secretRef, provider, certSecretRef) when the
+# platform values set one. Takes the platform values.
+def flux_chart_source($name; $class; $chart; $operation):
+  . as $v
+  | flux_oci_repository($name; $v | mirror_chart($class; $chart); $operation)
+  | .spec += ($v | mirror_flux_access($class));
+def flux_chart_source($name; $class; $chart): flux_chart_source($name; $class; $chart; "copy");
 
 # GitRepository at a pinned commit or tag, keeping only one directory in the
 # artifact.
@@ -489,6 +646,13 @@ def flux_git_repository($name; $url; $ref; $path):
       ignore: "/*\n!/\($path)/\n"
     }
   };
+
+# The same, from the gitSources mirror with its secretRef when the platform
+# values set one. Takes the platform values.
+def flux_git_source($name; $url; $ref; $path):
+  . as $v
+  | flux_git_repository($name; $v | mirror_git($url); $ref; $path)
+  | .spec += ($v | mirror_flux_access("gitSources"));
 
 # Kustomization that server-side applies a directory of plain manifests, as
 # scripts/apply-manifests.sh does for the helmfile. prune: false never deletes
@@ -570,10 +734,10 @@ def flux_edge_manifests($bom):
 def flux_manifest_objects($manifest; $depends_on):
   if $manifest.source.git then
     $manifest.source.git as $git
-    | [flux_git_repository($manifest.name; $git.repository; {commit: $git.commit}; $git.path),
+    | [flux_git_source($manifest.name; $git.repository; {commit: $git.commit}; $git.path),
        flux_manifests_kustomization($manifest.name; "GitRepository"; $git.path; $depends_on)]
   else
-    [flux_oci_repository($manifest.name; $manifest.chart; "extract"),
+    [flux_chart_source($manifest.name; "dependencyCharts"; $manifest.chart; "extract"),
      flux_manifests_kustomization($manifest.name; "OCIRepository"; $manifest.source.chart.path; $depends_on)]
   end;
 
@@ -588,12 +752,12 @@ def flux_files($bom; $ca_bundle):
   | {retry: $edge} as $needs_crds
   | (if $cert_manager then
       {"flux/cert-manager.yaml": [
-        flux_oci_repository("cert-manager"; $bom.dependencies["cert-manager"].chart),
+        flux_chart_source("cert-manager"; "dependencyCharts"; $bom.dependencies["cert-manager"].chart),
         flux_helm_release("cert-manager"; $v.namespaces.certManager; []; {crdsOnUpgrade: "Create"}; cert_manager_values($bom))
       ]}
     else {} end)
   + {"flux/steward.yaml": [
-      flux_oci_repository("steward"; $bom.products.steward.chart),
+      flux_chart_source("steward"; "productCharts"; $bom.products.steward.chart),
       # Steward's CRD is in the chart's crds/ directory. Skip keeps Helm's
       # behaviour: the CRD is upgraded deliberately, after reading the release
       # notes (see helmfile/README.md). In browser-admin Steward renders its
@@ -610,10 +774,10 @@ def flux_files($bom; $ca_bundle):
       (flux_edge_manifests($bom)) as $manifests
       | reduce range(0; $manifests | length) as $i ({};
           . + {"flux/\($manifests[$i].name).yaml":
-                flux_manifest_objects($manifests[$i];
-                  (if $i > 0 then [$manifests[$i - 1].name] else [] end))})
+                ($v | flux_manifest_objects($manifests[$i];
+                  (if $i > 0 then [$manifests[$i - 1].name] else [] end)))})
       + {"flux/envoy-gateway.yaml": [
-          flux_oci_repository("envoy-gateway"; $bom.dependencies["envoy-gateway"].chart),
+          flux_chart_source("envoy-gateway"; "dependencyCharts"; $bom.dependencies["envoy-gateway"].chart),
           # The CRDs belong to the Kustomizations above, never to Helm.
           flux_helm_release("envoy-gateway"; $v.networkPolicy.edgeNamespace; [];
             $needs_crds + {crds: "Skip"}; envoy_gateway_values($bom))
@@ -623,7 +787,7 @@ def flux_files($bom; $ca_bundle):
       # charts/steward-edge is not published as an artifact: Flux builds it
       # from this repository at the tag of this platform version.
       {"flux/steward-edge.yaml": [
-        flux_git_repository("steward-platform"; platform_repository;
+        flux_git_source("steward-platform"; platform_repository;
           {tag: $bom.platformVersion}; "charts/steward-edge"),
         flux_helm_release("steward-edge"; $v.namespaces.steward;
           ["steward"] + (if $edge then ["envoy-gateway"] else [] end);
@@ -637,7 +801,7 @@ def flux_files($bom; $ca_bundle):
     else {} end)
   + (if $v | task_auth then
       {"flux/github-oidc-exchange.yaml": [
-        flux_oci_repository("github-oidc-exchange"; $bom.products["github-oidc-exchange"].chart),
+        flux_chart_source("github-oidc-exchange"; "productCharts"; $bom.products["github-oidc-exchange"].chart),
         flux_helm_release("github-oidc-exchange"; $v.namespaces.identityExchange;
           (if $edge then ["envoy-gateway"] else [] end); $needs_crds;
           ($v | identity_values($bom)))
@@ -653,6 +817,7 @@ def flux_files($bom; $ca_bundle):
 
 def generate($bom; $ca_bundle):
   . as $v
+  | mirror_collisions($bom) as $_
   | {"helmfile.yaml": ($v | helmfile_environment($bom)),
      "values/steward.yaml": ($v | steward_values($bom; $ca_bundle))}
   + (if $v | installs_cert_manager then {"values/cert-manager.yaml": cert_manager_values($bom)} else {} end)
@@ -672,3 +837,19 @@ def generate($bom; $ca_bundle):
        "values/evaluation-edge.yaml": ($v | evaluation_edge_values)}
     else {} end)
   + (if $v | flux_supported then $v | flux_files($bom; $ca_bundle) else {} end);
+
+# The mirror list entries that the install generated from these platform values
+# pulls: the charts and images whose digest the generated values, helmfile
+# inputs or Flux objects name, the Git sources the Flux objects read, and the
+# CRD manifests when the helmfile applies them. Used by scripts/mirror-list.sh
+# --installed.
+def installed_artifacts($bom):
+  generate($bom; "") as $files
+  | ([$files | .. | strings | scan("sha256:[a-f0-9]{64}")] | unique) as $digests
+  | ([$files | .. | strings] | unique) as $strings
+  | ($files["helmfile.yaml"].releases.envoyGateway.enabled) as $manifests
+  | [mirror_list($bom; null)[]
+      | select(
+          if .type == "oci" then .digest as $d | any($digests[]; . == $d)
+          elif .type == "git" then .target as $t | any($strings[]; . == $t)
+          else $manifests end)];
