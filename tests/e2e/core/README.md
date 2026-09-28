@@ -28,7 +28,7 @@ Requirements: an **amd64** Docker engine, `kind`, `helm` 3.17 or later,
 
 ```sh
 tests/e2e/core/run.sh                     # highest tested Kubernetes version
-K8S_VERSION=1.30.13 tests/e2e/core/run.sh # a specific entry in kubernetes.tested
+K8S_VERSION=1.32.11 tests/e2e/core/run.sh # a specific entry in kubernetes.tested
 KEEP_CLUSTER=1 tests/e2e/core/run.sh      # keep the cluster for debugging
 ```
 

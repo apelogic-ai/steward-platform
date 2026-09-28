@@ -10,7 +10,7 @@ issue that tracks them.
 | Requirement | Core | Governed |
 |---|---|---|
 | [amd64 nodes](#amd64-nodes) | Required | Required |
-| [Kubernetes 1.30–1.34](#kubernetes-version) | 1.30 or later; tested 1.30–1.34 | 1.30–1.34 |
+| [Kubernetes 1.32–1.34](#kubernetes-version) | 1.32–1.34 | 1.32–1.34 |
 | [NetworkPolicy-enforcing CNI](#networkpolicy) | Required | Required |
 | [PostgreSQL 16](#postgresql) | Required | Required |
 | [Google Workspace](#google-workspace) | Only for browser login | Required |
@@ -36,11 +36,17 @@ cluster needs its own node placement.
 
 ## Kubernetes version
 
-The platform window is **1.30 to 1.34**. The Steward chart accepts 1.30 and
-later, but the steward-run runner chart rejects 1.35 and later, so the full
-platform cannot install on 1.35+.
+The platform window is **1.32 to 1.34**, for core and governed alike.
 
-- Known gap: [apelogic-ai/steward-run#62](https://github.com/apelogic-ai/steward-run/issues/62).
+- **Floor, 1.32.** The platform supports and tests nothing older. Some product
+  charts still declare an older `kubeVersion` floor, so Helm does not stop an
+  install on an older cluster; do not rely on that. Tracked in
+  [apelogic-ai/steward#177](https://github.com/apelogic-ai/steward/issues/177)
+  and
+  [apelogic-ai/github-oidc-exchange#73](https://github.com/apelogic-ai/github-oidc-exchange/issues/73).
+- **Ceiling, 1.34.** The steward-run runner chart rejects 1.35 and later, so
+  the full platform cannot install on 1.35+. Known gap:
+  [apelogic-ai/steward-run#62](https://github.com/apelogic-ai/steward-run/issues/62).
 - Exact tested versions are in `kubernetes.tested` in
   [bom/bom.json](../bom/bom.json). CI runs the core end-to-end test on each.
 

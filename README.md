@@ -30,8 +30,7 @@ Check these before you start. Details and known gaps are in
 [docs/prerequisites.md](docs/prerequisites.md).
 
 - **amd64 nodes.** Steward images are linux/amd64 only.
-- **Kubernetes 1.30 to 1.34** for the full platform. Core alone accepts 1.30
-  and later.
+- **Kubernetes 1.32 to 1.34**, the tested platform window.
 - **A CNI that enforces NetworkPolicy**, with peers given as literal CIDRs.
 - **PostgreSQL 16**, operated separately.
 - **Google Workspace** for browser login, which is Google-only today. Governed
