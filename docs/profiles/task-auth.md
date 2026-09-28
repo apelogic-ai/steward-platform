@@ -92,7 +92,7 @@ the exchange fetches GitHub's public JWKS over the internet.
   The job reports the runner's default Node, installs a pinned Node 24, and
   checks it against the action's `engines`.
 - **Trust uses the action's documented mechanism**, `NODE_EXTRA_CA_CERTS`
-  ([steward-run installation, v0.7.1](https://github.com/apelogic-ai/steward-run/blob/v0.7.1/docs/installation.md)),
+  ([steward-run installation, v0.7.2](https://github.com/apelogic-ai/steward-run/blob/v0.7.2/docs/installation.md)),
   not the deprecated `steward-ca-certificate-file` input.
 
 ## What it proves

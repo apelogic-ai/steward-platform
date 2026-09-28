@@ -72,24 +72,24 @@
       }
     },
     "steward-run": {
-      "version": "0.7.1",
+      "version": "0.7.2",
       "source": "https://github.com/apelogic-ai/steward-run",
-      "commit": "5d08d38e63e7bc2c8f359bfa7f6008659094ec9b",
-      "release": "https://github.com/apelogic-ai/steward-run/releases/tag/v0.7.1",
+      "commit": "1a5a0729642e0713f3b9cb8831be1f79e06d9915",
+      "release": "https://github.com/apelogic-ai/steward-run/releases/tag/v0.7.2",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/steward-run-arc",
-        "version": "0.7.1",
-        "digest": "sha256:01deccbdda294f47cab0cdfae65d2dd12e4eeb51260a8f7a7ee760d43b67952b"
+        "version": "0.7.2",
+        "digest": "sha256:e6d46d45f440c0aa36eacb144299ba33d44a50be1c8fc18eb43e1fc9e60e3c55"
       },
       "images": {
-        "runner": "ghcr.io/apelogic-ai/steward-run:0.7.1@sha256:7b2d9b13b83567ba8a9558c2a0cd275b7aec972efc88c122c95e8b54400df5b4"
+        "runner": "ghcr.io/apelogic-ai/steward-run:0.7.2@sha256:c2bfe3bcb54415abbd389295d12057ae10a29789d666ccaf219c89d32e62ffac"
       },
       "action": {
-        "commit": "018d9eb20d036b26060c5cb3d979a84d42bcc051"
+        "commit": "e377593aabc574e2ab7d0ef35843a8a8bb1cf4b3"
       },
       "workflow": {
         "repository": "apelogic-ai/steward-run",
-        "commit": "5d08d38e63e7bc2c8f359bfa7f6008659094ec9b"
+        "commit": "1a5a0729642e0713f3b9cb8831be1f79e06d9915"
       },
       "signatures": {
         "certificateIdentity": "https://github.com/apelogic-ai/steward-run/.github/workflows/portable-release.yml@refs/heads/main",

@@ -162,7 +162,7 @@ and enrolling it late.
    own the details.
 3. **steward-run**: runner controller, runner scale set and the pinned
    reusable workflow
-   ([installation](https://github.com/apelogic-ai/steward-run/blob/v0.7.1/docs/installation.md)).
+   ([installation](https://github.com/apelogic-ai/steward-run/blob/v0.7.2/docs/installation.md)).
    Governed jobs fail authentication until step 6; one such run shows the real
    GitHub claims that step 6 enrolls.
 4. **Wire Steward to the exchange**: Steward's task identity settings take the
