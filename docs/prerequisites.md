@@ -13,7 +13,7 @@ issue that tracks them.
 | [Kubernetes 1.32–1.34](#kubernetes-version) | 1.32–1.34 | 1.32–1.34 |
 | [NetworkPolicy-enforcing CNI](#networkpolicy) | Required | Required |
 | [PostgreSQL 16](#postgresql) | Required | Required |
-| [Google Workspace](#google-workspace) | Only for browser login | Required |
+| [Google Workspace](#google-workspace) | Only for browser login (browser-admin profile) | Required |
 | [GitHub.com](#githubcom) | Not needed | Required |
 | [PodSecurity `privileged` namespaces](#podsecurity) | Not needed | Required |
 | [Paid LLM API](#llm-api) | Not needed | Required |
@@ -102,6 +102,14 @@ the browser.
   a Google organization ID: `org_` followed by up to 60 lowercase letters,
   digits, `_` or `-`. The Steward 0.3.1 chart schema enforces this
   ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md)).
+- The OAuth client is a Google Cloud "Web application" client in the
+  Workspace organization, with an Internal consent screen and the single
+  redirect URI `<Steward origin>/admin/auth/callback`. Google accepts
+  redirect URIs only under a public suffix, so the Steward hostname cannot be
+  under `.test` or `.local` for a real sign-in. See
+  [local access](browser-admin/local-access.md#the-google-oauth-client).
+- The first administrator exists only after a first sign-in and a
+  `bootstrap-rbac` grant ([first-admin runbook](browser-admin/first-admin.md)).
 - mcp-gw's Google tool connections have their own Google Cloud requirements
   ([apelogic-ai/mcp-gw#80](https://github.com/apelogic-ai/mcp-gw/issues/80)).
 

@@ -133,6 +133,9 @@ the exchange fetches GitHub's public JWKS over the internet.
   (`503`, "Task submission is disabled during the staged orchestration
   rollout") that an associated subject would get. The governed profile needs
   the same capability ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
+  The [browser-admin profile](browser-admin.md) adds the browser login, and
+  its walkthrough shows the association
+  [by hand](../browser-admin/walkthrough.md#optional-link-a-task-identity-to-the-user-manual).
 - **Policy v5 and `steward-task-v2`** are not exercised: they need that
   canonical user too.
 - **No execution**, no runner scale set, no Mint, SPIRE, sandbox or

@@ -16,7 +16,7 @@ The platform is four independently released products:
 | github-oidc-exchange | [apelogic-ai/github-oidc-exchange](https://github.com/apelogic-ai/github-oidc-exchange) | Exchanges GitHub Actions OIDC tokens for task identity |
 | mcp-gw | [apelogic-ai/mcp-gw](https://github.com/apelogic-ai/mcp-gw) | MCP gateway for governed tool access |
 
-Three install profiles are defined:
+Four install profiles are defined:
 
 - **core**: Steward alone, with a PostgreSQL database and cert-manager for its
   service certificates. No agent execution.
@@ -24,6 +24,13 @@ Three install profiles are defined:
   exercised by the steward-run GitHub Action. Proves Task authentication with
   real GitHub Actions OIDC; no agent execution. See
   [docs/profiles/task-auth.md](docs/profiles/task-auth.md).
+- **browser-admin**: task-auth plus Steward's web UI and Google Workspace
+  sign-in, routed through Steward's own Gateway API routes: the
+  administrator surfaces for templates, Envelope requests, approvals and
+  audit, and the first-administrator bootstrap. No agent execution. See
+  [docs/profiles/browser-admin.md](docs/profiles/browser-admin.md), and
+  [local access](docs/browser-admin/local-access.md) to evaluate it with a
+  real sign-in.
 - **governed**: core plus the other three products and the external
   dependencies that governed execution needs (workload identity, sandboxing,
   inference proxy, runners). Not yet covered; see
@@ -38,8 +45,8 @@ Check these before you start. Details and known gaps are in
 - **Kubernetes 1.32 to 1.34**, the tested platform window.
 - **A CNI that enforces NetworkPolicy**, with peers given as literal CIDRs.
 - **PostgreSQL 16**, operated separately.
-- **Google Workspace** for browser login, which is Google-only today. Governed
-  use needs it.
+- **Google Workspace** for browser login, which is Google-only today. The
+  browser-admin profile and governed use need it.
 - **GitHub.com** for governed jobs. GitHub Enterprise Server and GitLab are not
   supported.
 - **PodSecurity `privileged` namespaces** for governed-mode runtimes and SPIRE.
@@ -119,8 +126,8 @@ verifies the product attestations and signatures. See [docs/verification.md](doc
 
 ## Status
 
-Pre-release. The current BOM (`2026.10.0-alpha.3`) pins the core and task-auth
-profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
+Pre-release. The current BOM (`2026.10.0-alpha.4`) pins the core, task-auth
+and browser-admin profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
 cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for evaluation,
 PostgreSQL 16.
 There are no platform releases yet.

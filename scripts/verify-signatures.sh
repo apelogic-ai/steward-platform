@@ -6,7 +6,9 @@
 #   - the release manifest verifies against its bundle, signed by the declared
 #     workflow at the pinned commit;
 #   - the signed manifest names the pinned version and commit, every pinned
-#     chart and image digest, and the pinned action commit (when there is one);
+#     chart and image digest, and the pinned action commit (when there is one),
+#     and carries exactly the pinned workflow repository and commit and
+#     manifest schemaVersion (when the BOM pins them);
 #   - each listed subject's bundle verifies for the pinned digest, signed by the
 #     same workflow at the same commit.
 # Everything is fetched anonymously from the public release. Only BOM
@@ -84,7 +86,7 @@ for product in ${products}; do
   # The signed manifest must name every pinned coordinate. Digests may appear
   # bare or inside a reference; only the BOM side is ever printed.
   mismatches="$(jq -r --argjson p "${p}" '
-    [.. | strings] as $strings
+    . as $manifest | [.. | strings] as $strings
     | def names($digest): any($strings[]; . == $digest or endswith("@" + $digest));
     (select(.version != $p.version) | "version is not \($p.version)"),
     (select(.commit != $p.commit) | "commit is not \($p.commit)"),
@@ -92,13 +94,37 @@ for product in ${products}; do
     ($p.images // {} | to_entries[] | .key as $c | .value | split("@")[1]
       | select(names(.) | not) | "image \($c) digest \(.) is missing"),
     ($p.action // empty | .commit | select(any($strings[]; . == $p.action.commit) | not)
-      | "action commit \(.) is missing")
+      | "action commit \(.) is missing"),
+    # Fields a consumer maps by name (steward-run: workflowRepository,
+    # workflowCommit and schemaVersion) must match exactly.
+    ($p.workflow // empty | select(.repository != $manifest.workflowRepository)
+      | "workflowRepository is not \(.repository)"),
+    ($p.workflow // empty | select(.commit != $manifest.workflowCommit)
+      | "workflowCommit is not \(.commit)"),
+    ($p.signatures.releaseManifest.schemaVersion // empty | select(. != $manifest.schemaVersion)
+      | "schemaVersion is not \(.)")
   ' "${dir}/manifest.json")"
   if [[ -n "${mismatches}" ]]; then
     while IFS= read -r line; do fail "products.${product}: signed ${manifest_asset}: ${line}"; done <<<"${mismatches}"
     continue
   fi
   echo "ok   products.${product}: signed ${manifest_asset} names version ${version}, commit ${commit} and every pinned digest"
+
+  # The generator projects steward-run's coordinates into Steward's
+  # config.apiserver.stewardRunRelease. With Steward's documented mapping
+  # (schemaVersion -> manifestSchemaVersion, image -> governedJobContainerImage),
+  # the projection must be exactly the signed manifest's fields.
+  if [[ "${product}" == steward-run ]]; then
+    projected="$(jq -cS -n --slurpfile bom "${bom}" -L "${repo_root}/scripts/lib" \
+      'include "platform"; steward_run_release($bom[0])')"
+    signed="$(jq -cS '{manifestSchemaVersion: .schemaVersion, version, workflowRepository,
+      workflowCommit, actionCommit, governedJobContainerImage: .image}' "${dir}/manifest.json")"
+    if [[ "${projected}" != "${signed}" ]]; then
+      fail "products.${product}: the stewardRunRelease projection ${projected} differs from the signed ${manifest_asset}"
+      continue
+    fi
+    echo "ok   products.${product}: Steward's stewardRunRelease projection equals the signed ${manifest_asset}"
+  fi
 
   while IFS=$'\t' read -r subject asset digest; do
     label="products.${product}.${subject}"

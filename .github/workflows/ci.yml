@@ -151,6 +151,43 @@ jobs:
           K8S_VERSION: ${{ matrix.k8s }}
         run: tests/e2e/core/run.sh
 
+  e2e-browser-admin:
+    name: browser-admin e2e (Kubernetes ${{ matrix.k8s }})
+    needs: [validate, e2e-plan]
+    # Steward images are linux/amd64 only; ubuntu-latest is amd64.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s: ${{ fromJSON(needs.e2e-plan.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read pins from the BOM
+        id: bom
+        run: echo "identity-commit=$(jq -er '.products["github-oidc-exchange"].commit' bom/bom.json)" >> "${GITHUB_OUTPUT}"
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.38.2
+      - name: Install tools
+        run: scripts/ci/install-tools.sh kind helm helmfile kubectl yq
+      # The same cache as the task-auth job: keyring-tool at the BOM commit.
+      - name: Restore keyring-tool
+        id: keyring-tool
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/keyring-tool
+          key: keyring-tool-${{ steps.bom.outputs.identity-commit }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Build keyring-tool from the github-oidc-exchange source at the BOM commit
+        if: steps.keyring-tool.outputs.cache-hit != 'true'
+        run: scripts/ci/build-keyring-tool.sh "${RUNNER_TEMP}/keyring-tool/keyring-tool"
+      - name: Run browser-admin e2e through the reference install
+        env:
+          K8S_VERSION: ${{ matrix.k8s }}
+          KEYRING_TOOL: ${{ runner.temp }}/keyring-tool/keyring-tool
+        run: tests/e2e/browser-admin/run.sh
+
   e2e-task-auth:
     name: task-auth e2e (Kubernetes ${{ matrix.k8s }})
     needs: [validate, e2e-plan]

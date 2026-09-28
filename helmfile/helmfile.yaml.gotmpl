@@ -1,5 +1,5 @@
-# Reference install of the Steward platform, core and task-auth profiles. See
-# README.md in this directory.
+# Reference install of the Steward platform: the core, task-auth and
+# browser-admin profiles. See README.md in this directory.
 #
 # Every input comes from scripts/generate.sh, which reads one platform values
 # file and the BOM. Generate first, then pick the matching environment:
@@ -19,6 +19,9 @@ environments:
   kind-task-auth:
     values:
       - {{ $root }}/kind-task-auth/helmfile.yaml
+  kind-browser-admin:
+    values:
+      - {{ $root }}/kind-browser-admin/helmfile.yaml
   production:
     values:
       - {{ $root }}/production/helmfile.yaml
@@ -73,7 +76,8 @@ releases:
   - name: steward
     namespace: {{ $ns.steward }}
     chart: {{ $releases.steward.chart }}
-    {{- if or $releases.certManager.enabled $releases.evaluationCa.enabled $releases.postgresqlEvaluation.enabled }}
+    {{- $stewardNeedsEdge := and $releases.steward.routes $releases.envoyGateway.enabled }}
+    {{- if or $releases.certManager.enabled $releases.evaluationCa.enabled $releases.postgresqlEvaluation.enabled $stewardNeedsEdge }}
     needs:
       {{- if $releases.certManager.enabled }}
       - {{ $ns.certManager }}/cert-manager
@@ -84,13 +88,18 @@ releases:
       {{- if $releases.postgresqlEvaluation.enabled }}
       - {{ $ns.steward }}/postgresql-evaluation
       {{- end }}
+      {{- if $stewardNeedsEdge }}
+      # browser-admin: Steward renders its own HTTPRoutes and BackendTLSPolicy,
+      # whose CRDs the envoy-gateway release applies first.
+      - {{ $ns.edge }}/envoy-gateway
+      {{- end }}
     {{- end }}
     values:
       - {{ $generated }}/steward.yaml
 
 {{- if $releases.envoyGateway.enabled }}
 
-  # task-auth: Envoy Gateway from the BOM, pinned by chart digest, without its
+  # task-auth and browser-admin: Envoy Gateway from the BOM, pinned by chart digest, without its
   # bundled CRDs. Its Envoy proxies run in this namespace. First, the BOM's
   # Gateway API (standard channel) and Envoy Gateway CRD manifests are
   # checked against their digests and server-side applied, so upgrades update
@@ -147,7 +156,7 @@ releases:
 {{- if $releases.stewardEdge.enabled }}
 
   # task-auth: Steward's task API routes and the BackendTLSPolicy to the
-  # apiserver.
+  # apiserver. browser-admin uses Steward's own routes instead.
   - name: steward-edge
     namespace: {{ $ns.steward }}
     chart: ../charts/steward-edge
@@ -162,7 +171,7 @@ releases:
 
 {{- if $releases.identityExchange.enabled }}
 
-  # task-auth: github-oidc-exchange from the BOM, pinned by chart digest
+  # task-auth and browser-admin: github-oidc-exchange from the BOM, pinned by chart digest
   # (version {{ $releases.identityExchange.version }}). Its policy ConfigMap and
   # keyring Secret must exist first; the chart only references them.
   - name: github-oidc-exchange

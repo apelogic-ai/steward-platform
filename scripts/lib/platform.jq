@@ -59,7 +59,9 @@ def uses_cert_manager: .tls.mode == "certManager";
 def installs_cert_manager: uses_cert_manager and .tls.certManager.install;
 def uses_evaluation_issuer: uses_cert_manager and .tls.certManager.issuer.source == "evaluation";
 def uses_evaluation_database: .database.source == "evaluation";
-def task_auth: .profile == "task-auth";
+# browser-admin is task-auth plus Steward's browser web UI and login.
+def task_auth: .profile == "task-auth" or .profile == "browser-admin";
+def browser_admin: .profile == "browser-admin";
 def installs_edge: task_auth and .edge.install;
 def uses_evaluation_gateway: task_auth and .edge.gateway.source == "evaluation";
 
@@ -70,9 +72,52 @@ def origin_host: ltrimstr("https://");
 # edge verifies.
 def steward_api_hostname: "steward-apiserver.\(.namespaces.steward).svc.\(.cluster.domain)";
 
+# Steward's browser login callback: the configured origin plus this exact
+# path (Steward's browser session contract v1).
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/browser-session-contract-v1.md
+def browser_callback_path: "/admin/auth/callback";
+
+# Every public apiserver path, for Steward's own web.httpRoute. The chart does
+# not enforce the list, so the platform supplies all of it: the task API and its
+# protected-resource metadata, the browser APIs and login, the GitHub
+# connection callback, the operator API and the application API. Everything
+# else is the web UI. From Steward's chart README and platform preflight:
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/scripts/steward-platform-preflight.py
+def steward_api_paths:
+  [
+    {type: "Exact", value: "/.well-known/oauth-protected-resource"},
+    {type: "PathPrefix", value: "/admin/api"},
+    {type: "PathPrefix", value: "/admin/auth"},
+    {type: "Exact", value: "/admin/connections/github/callback"},
+    {type: "PathPrefix", value: "/admin/operator"},
+    {type: "PathPrefix", value: "/app/api"},
+    {type: "PathPrefix", value: "/v1"}
+  ];
+def steward_web_paths: [{type: "PathPrefix", value: "/"}];
+
 # The Gateway listener both public hostnames attach to.
 def edge_parent_refs:
   [{name: .edge.gateway.name, namespace: .edge.gateway.namespace, sectionName: .edge.gateway.listener}];
+
+# Steward's config.apiserver.stewardRunRelease, projected from the BOM's
+# steward-run entry with Steward's documented mapping (schemaVersion ->
+# manifestSchemaVersion, image -> governedJobContainerImage). Every field comes
+# from the signed release manifest (scripts/verify-signatures.sh); the image
+# is the runner image without its tag, as the manifest names it.
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/governed-platform-compatibility.md
+def steward_run_release($bom):
+  $bom.products["steward-run"] as $run
+  | ($run.images.runner | image_parts) as $image
+  | {
+      manifestSchemaVersion: $run.signatures.releaseManifest.schemaVersion,
+      version: $run.version,
+      workflowRepository: $run.workflow.repository,
+      workflowCommit: $run.workflow.commit,
+      actionCommit: $run.action.commit,
+      governedJobContainerImage: "\($image.repository)@\($image.digest)"
+    }
+  | if any(.[]; . == null) then error("BOM: steward-run lacks a stewardRunRelease coordinate: \(.)") else . end;
 
 # --- Chart values ------------------------------------------------------------
 
@@ -122,18 +167,26 @@ def steward_values($bom; $ca_bundle):
         end
       ),
       config: {
-        apiserver: {kubernetesTokenReviewAudience: $v.cluster.serviceAccountTokenAudience}
+        apiserver: (
+          {kubernetesTokenReviewAudience: $v.cluster.serviceAccountTokenAudience}
+          + (if $v | browser_admin then
+              {stewardRunRelease: steward_run_release($bom)}
+              + (if $v.administration.capabilityCatalog then
+                  {capabilityCatalog: $v.administration.capabilityCatalog}
+                else {} end)
+            else {} end)
+        )
       },
       networkPolicy: {
         enabled: true,
         dnsNamespace: $v.cluster.dnsNamespace,
         kubeApiCidrs: $v.cluster.kubeApi.cidrs,
         postgresCidrs: $v.database.cidrs,
-        # The edge reaches the API as a direct caller: the chart's
-        # ingressNamespace only applies with its browser web UI enabled.
+        # Without the web UI the edge reaches the API as a direct caller: the
+        # chart's ingressNamespace only applies with its web UI enabled.
         apiserverIngressNamespaces: (
           ($v.networkPolicy.apiserverIngressNamespaces // [])
-          + (if $v | task_auth then [$v.networkPolicy.edgeNamespace] else [] end)
+          + (if ($v | task_auth) and ($v | browser_admin | not) then [$v.networkPolicy.edgeNamespace] else [] end)
           | reduce .[] as $n ([]; if index([$n]) then . else . + [$n] end)
         ),
         ports: {kubernetesApi: $v.cluster.kubeApi.port, postgres: $v.database.port}
@@ -156,6 +209,52 @@ def steward_values($bom; $ca_bundle):
           publicJwksConfigMap: $v.identityExchange.publicJwksConfigMap
         }
       }
+    else {} end)
+  # Deep merge: the web image and NetworkPolicy keys join the ones above.
+  | . * (if $v | browser_admin then
+      ($bom.products.steward.images.web | image_parts) as $web
+      | if $web.repository != ($bom.products.steward.images.apiserver | image_parts).repository then
+          error("BOM: Steward web and apiserver images must share one repository")
+        else . end
+      | {
+          images: {web: {tag: $web.tag, digest: $web.digest}},
+          # Google Workspace login. The origin is the public Steward origin;
+          # the client secret stays in the operator's Secret.
+          browserAuth: {
+            enabled: true,
+            google: {
+              clientId: $v.browserAuth.google.clientId,
+              origin: $v.publicEndpoints.steward,
+              workspaceDomain: $v.browserAuth.google.workspaceDomain,
+              organizationId: $v.browserAuth.google.organizationId,
+              clientSecret: $v.browserAuth.google.clientSecret
+            }
+          },
+          # The web UI, on the same origin as the API, and Steward's own
+          # routes: the API paths to the apiserver through a BackendTLSPolicy
+          # that verifies its certificate, everything else to the web UI.
+          web: {
+            enabled: true,
+            host: ($v.publicEndpoints.steward | origin_host),
+            httpRoute: {
+              enabled: true,
+              parentRefs: ($v | edge_parent_refs),
+              hostname: ($v.publicEndpoints.steward | origin_host),
+              apiPaths: steward_api_paths,
+              webPaths: steward_web_paths,
+              backendTls: {
+                hostname: ($v | steward_api_hostname),
+                caConfigMap: {name: $v.edge.stewardBackendCaConfigMap, key: "ca.crt"}
+              }
+            }
+          },
+          networkPolicy: {
+            browserAuthEgressCidrs: $v.networkPolicy.egressCidrs.browserAuth,
+            # The edge data plane reaches the web UI and, as the chart's edge
+            # namespace, the apiserver.
+            ingressNamespace: $v.networkPolicy.edgeNamespace
+          }
+        }
     else {} end);
 
 # cert-manager chart values: CRDs as templates (so upgrades update them) and
@@ -303,7 +402,9 @@ def helmfile_environment($bom):
         postgresqlEvaluation: {enabled: ($v | uses_evaluation_database)},
         steward: {
           chart: ($bom.products.steward.chart | chart_ref),
-          version: $bom.products.steward.chart.version
+          version: $bom.products.steward.chart.version,
+          # Steward renders Gateway API objects itself, so it needs their CRDs.
+          routes: ($v | browser_admin)
         },
         envoyGateway: (
           {enabled: ($v | installs_edge)}
@@ -314,7 +415,8 @@ def helmfile_environment($bom):
         ),
         edgeEvaluationCa: {enabled: ($v | uses_evaluation_gateway)},
         evaluationEdge: {enabled: ($v | uses_evaluation_gateway)},
-        stewardEdge: {enabled: ($v | task_auth)},
+        # browser-admin routes through Steward's own web.httpRoute instead.
+        stewardEdge: {enabled: (($v | task_auth) and ($v | browser_admin | not))},
         identityExchange: (
           {enabled: ($v | task_auth)}
           + (if $v | task_auth then
@@ -411,8 +513,10 @@ def generate($bom; $ca_bundle):
   + (if $v | uses_evaluation_issuer then {"values/evaluation-ca.yaml": evaluation_ca_values} else {} end)
   + (if $v | uses_evaluation_database then {"values/postgresql-evaluation.yaml": ($v | postgresql_evaluation_values($bom))} else {} end)
   + (if $v | task_auth then
-      {"values/github-oidc-exchange.yaml": ($v | identity_values($bom)),
-       "values/steward-edge.yaml": ($v | steward_edge_values)}
+      {"values/github-oidc-exchange.yaml": ($v | identity_values($bom))}
+    else {} end)
+  + (if ($v | task_auth) and ($v | browser_admin | not) then
+      {"values/steward-edge.yaml": ($v | steward_edge_values)}
     else {} end)
   + (if $v | installs_edge then
       {"values/envoy-gateway.yaml": envoy_gateway_values($bom)}

@@ -1,7 +1,7 @@
-# Core reference install with helmfile
+# Reference install with helmfile
 
-[`helmfile.yaml.gotmpl`](helmfile.yaml.gotmpl) installs the core profile from
-the BOM. It has no inputs of its own: [`scripts/generate.sh`](../scripts/generate.sh)
+[`helmfile.yaml.gotmpl`](helmfile.yaml.gotmpl) installs the core, task-auth
+and browser-admin profiles from the BOM. It has no inputs of its own: [`scripts/generate.sh`](../scripts/generate.sh)
 turns one [platform values file](../docs/platform-values.md) and
 [`bom/bom.json`](../bom/bom.json) into its environment values and every chart's
 values. Charts from the BOM are installed by digest.
@@ -11,12 +11,12 @@ values. Charts from the BOM are installed by digest.
 | `cert-manager` | BOM `dependencies.cert-manager.chart`, by digest | all, unless `tls.certManager.install: false` |
 | `evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca): self-signed CA `Issuer` | evaluation only |
 | `postgresql-evaluation` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation): the BOM PostgreSQL image, no persistence or TLS | evaluation only |
-| `steward` | BOM `products.steward.chart`, by digest | all |
-| `envoy-gateway` | BOM `dependencies.envoy-gateway.chart`, by digest, without its bundled CRDs. A presync hook first runs [`scripts/apply-manifests.sh`](../scripts/apply-manifests.sh): the BOM's Gateway API (standard channel) and Envoy Gateway CRD manifests, checked by digest and server-side applied against `PLATFORM_KUBE_CONTEXT` or the current context | task-auth, when `edge.install` is true |
-| `edge-evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca) in the Gateway namespace: the edge listener CA | task-auth evaluation only |
-| `evaluation-edge` | [`charts/evaluation-edge`](../charts/evaluation-edge): evaluation `GatewayClass`, `Gateway` and the public Steward CA `ConfigMap` | task-auth evaluation only |
-| `steward-edge` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API `HTTPRoute` and `BackendTLSPolicy` | task-auth |
-| `github-oidc-exchange` | BOM `products.github-oidc-exchange.chart`, by digest | task-auth |
+| `steward` | BOM `products.steward.chart`, by digest. In browser-admin it also renders its own `HTTPRoute`s and `BackendTLSPolicy`, so it is installed after `envoy-gateway` | all |
+| `envoy-gateway` | BOM `dependencies.envoy-gateway.chart`, by digest, without its bundled CRDs. A presync hook first runs [`scripts/apply-manifests.sh`](../scripts/apply-manifests.sh): the BOM's Gateway API (standard channel) and Envoy Gateway CRD manifests, checked by digest and server-side applied against `PLATFORM_KUBE_CONTEXT` or the current context | task-auth and browser-admin, when `edge.install` is true |
+| `edge-evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca) in the Gateway namespace: the edge listener CA | task-auth and browser-admin, evaluation only |
+| `evaluation-edge` | [`charts/evaluation-edge`](../charts/evaluation-edge): evaluation `GatewayClass`, `Gateway` and the public Steward CA `ConfigMap` | task-auth and browser-admin, evaluation only |
+| `steward-edge` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API `HTTPRoute` and `BackendTLSPolicy` | task-auth (browser-admin uses Steward's own routes) |
+| `github-oidc-exchange` | BOM `products.github-oidc-exchange.chart`, by digest | task-auth and browser-admin |
 
 The order comes from `needs`: cert-manager, then the evaluation pieces, then
 Steward. For where this fits in the whole platform, see

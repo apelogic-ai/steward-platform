@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=../../schemas/platform-values/v1.schema.json
+#
+# Evaluation install of the browser-admin profile on a local kind cluster
+# created from ../kind/kind-config.yaml: the task-auth install (../kind-task-auth)
+# plus Steward's web UI and Google Workspace browser login, routed through
+# Steward's own Gateway API routes. Not for production.
+#
+# CI installs this file as it is, with a placeholder OAuth client that never
+# reaches Google. To sign in for real, copy the directory and replace the
+# values marked REPLACE: a Steward hostname under a domain on the public
+# suffix list (Google refuses redirect URIs under .test), your OAuth client
+# ID and your Workspace domain. See docs/browser-admin/local-access.md.
+#
+# Before installing, create the operator-owned inputs: the task-auth ones
+# (see docs/profiles/task-auth.md) and the Google client Secret named in
+# browserAuth.google.clientSecret, in the Steward namespace.
+apiVersion: steward-platform/v1
+kind: PlatformValues
+environment: kind-browser-admin
+purpose: evaluation
+profile: browser-admin
+
+cluster:
+  domain: cluster.local
+  serviceAccountTokenAudience: https://kubernetes.default.svc.cluster.local
+  dnsNamespace: kube-system
+  kubeApi:
+    cidrs: [10.96.0.1/32]
+    port: 443
+
+namespaces:
+  steward: steward
+  certManager: cert-manager
+  identityExchange: identity
+
+serviceAccounts:
+  identityExchange:
+    annotations: {}
+
+tls:
+  mode: certManager
+  certManager:
+    install: true
+    issuer:
+      source: evaluation
+
+database:
+  source: evaluation
+  secret:
+    name: steward-database
+    key: url
+  cidrs: [10.244.0.0/16]
+  port: 5432
+  tls:
+    mode: disabled
+
+networkPolicy:
+  # Envoy Gateway runs its Envoy proxies in its own namespace.
+  edgeNamespace: envoy-gateway-system
+  egressCidrs:
+    # Evaluation only: HTTPS to any address. Google publishes no stable
+    # ranges for its sign-in endpoints (apelogic-ai/steward#152), and the
+    # schema refuses an unrestricted range in production, where the operator
+    # maintains literal CIDRs.
+    browserAuth: [0.0.0.0/0]
+
+publicEndpoints:
+  # REPLACE for a real sign-in, for example https://steward.eval.<your domain>.
+  steward: https://steward.platform.test
+  identityIssuer: https://identity.platform.test
+
+audiences:
+  taskApi: steward-task-api
+
+edge:
+  install: true
+  gateway:
+    source: evaluation
+    name: steward-platform-edge
+    namespace: envoy-gateway-system
+    listener: https
+  # Envoy proxy pods have no fixed address: the kind pod subnet.
+  clientCidrs: [10.244.0.0/16]
+  stewardBackendCaConfigMap: steward-apiserver-ca
+
+identityExchange:
+  githubAudience: steward-platform-task-auth
+  policy:
+    contract: github-oidc-exchange.apelogic.io/v6
+    configMapName: github-oidc-exchange-policy-v6
+    revision: v6-rev-1
+  keyring:
+    secretName: github-oidc-exchange-keyring
+    revision: rev-1
+  publicJwksConfigMap:
+    name: github-oidc-exchange-jwks
+    key: jwks.json
+
+browserAuth:
+  google:
+    # REPLACE: your OAuth client ID. This placeholder never reaches Google.
+    clientId: 000000000000-placeholder.apps.googleusercontent.com
+    # REPLACE: your Google Workspace domain.
+    workspaceDomain: example.com
+    # A Steward-chosen, stable name; not a Google organization ID.
+    organizationId: org_evaluation
+    # Create it: kubectl -n steward create secret generic steward-google-oidc
+    #   --from-file=client-secret=<file holding only the secret, no newline>
+    clientSecret:
+      name: steward-google-oidc
+      key: client-secret
+
+administration:
+  # Steward refuses to author an Envelope template unless the catalog lists a
+  # model. This one is descriptive only: nothing runs in this profile.
+  capabilityCatalog:
+    schemaVersion: steward.capability-catalog/v2
+    models:
+      - provider: evaluation
+        model: evaluation-model
+    tools: []
+    catalogs: []

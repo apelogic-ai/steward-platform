@@ -38,6 +38,7 @@
       "properties": {
         "core": { "$ref": "#/$defs/profile" },
         "task-auth": { "$ref": "#/$defs/profile" },
+        "browser-admin": { "$ref": "#/$defs/profile" },
         "governed": { "$ref": "#/$defs/profile" }
       }
     }
@@ -52,7 +53,7 @@
       "enum": ["steward", "steward-run", "github-oidc-exchange", "mcp-gw"]
     },
     "profileName": {
-      "enum": ["core", "task-auth", "governed"]
+      "enum": ["core", "task-auth", "browser-admin", "governed"]
     },
     "digest": {
       "description": "Content digest.",
@@ -169,7 +170,12 @@
           "required": ["asset", "bundle"],
           "properties": {
             "asset": { "$ref": "#/$defs/releaseAsset" },
-            "bundle": { "$ref": "#/$defs/releaseAsset" }
+            "bundle": { "$ref": "#/$defs/releaseAsset" },
+            "schemaVersion": {
+              "description": "The manifest's own schemaVersion, where a consumer's documented mapping reads it (steward-run's, projected into Steward's stewardRunRelease). CI checks it against the signed manifest.",
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "subjects": {
@@ -204,6 +210,20 @@
           "additionalProperties": false,
           "required": ["commit"],
           "properties": {
+            "commit": { "$ref": "#/$defs/commit" }
+          }
+        },
+        "workflow": {
+          "description": "Reusable GitHub workflow the product publishes, as its signed release manifest names it (steward-run's workflowRepository and workflowCommit). CI checks both against the signed manifest.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "commit"],
+          "properties": {
+            "repository": {
+              "description": "owner/repository on GitHub.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+            },
             "commit": { "$ref": "#/$defs/commit" }
           }
         },
