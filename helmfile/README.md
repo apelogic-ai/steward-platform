@@ -91,6 +91,26 @@ Steward's own [installation guide](https://github.com/apelogic-ai/steward/blob/v
 stays the authority for its prerequisites, the objects it expects, and the
 checks after install.
 
+### From a registry mirror
+
+With a `registry` block in the platform values
+([`environments/production-mirrored`](../environments/production-mirrored/platform-values.yaml)),
+every chart reference in the generated inputs points at your mirror, pinned by
+the BOM digest, and the CRD hook downloads its manifests from the `manifests`
+mirror. Helm pulls the charts with its own registry credentials
+(`helm registry login`, `HELM_REGISTRY_CONFIG` or the Docker configuration),
+or helmfile logs in for you when these are set:
+
+```sh
+export STEWARD_PLATFORM_PRODUCT_CHARTS_USERNAME=... STEWARD_PLATFORM_PRODUCT_CHARTS_PASSWORD=...
+export STEWARD_PLATFORM_DEPENDENCY_CHARTS_USERNAME=... STEWARD_PLATFORM_DEPENDENCY_CHARTS_PASSWORD=...
+export PLATFORM_NETRC_FILE=...   # only if the manifests mirror needs credentials
+```
+
+The workloads pull with the Secrets named in `registry.imagePullSecrets`,
+which you create in each namespace first. See
+[registry mirroring](../docs/registry-mirroring.md).
+
 ## Upgrades and the Steward CRD
 
 Upgrading is a BOM bump: regenerate and sync. Two things Helm does not do for

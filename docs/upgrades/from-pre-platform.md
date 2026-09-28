@@ -584,8 +584,9 @@ After the last stage, check the install as a whole:
 - [ ] The artifacts you installed pass the BOM checks in
       [verification](../verification.md): `scripts/verify-digests.sh`,
       `scripts/verify-attestations.sh` and `scripts/verify-signatures.sh`.
-      If you mirror images, these check the upstream artifacts only
-      ([#14](https://github.com/apelogic-ai/steward-platform/issues/14)).
+      If you mirror images, also check your mirror with
+      `scripts/verify-digests.sh --mirror`
+      ([registry mirroring](../registry-mirroring.md)).
 - [ ] The task-auth chain holds end to end: discovery, exchange, Steward's
       answer and the negative cases, as in the
       [task-auth assertions](../../tests/e2e/task-auth/README.md#assertions),
@@ -606,9 +607,6 @@ This repository:
   dependencies are not exercised here.
 - [#13](https://github.com/apelogic-ai/steward-platform/issues/13): no pinned
   governed dependency inventory since Steward 0.3.0.
-- [#14](https://github.com/apelogic-ai/steward-platform/issues/14): platform
-  values cannot express a registry mirror; digest checks run against upstream
-  only.
 - [#16](https://github.com/apelogic-ai/steward-platform/issues/16):
   NetworkPolicy peers in the platform values are literal CIDRs only.
 - [#18](https://github.com/apelogic-ai/steward-platform/issues/18): no grant

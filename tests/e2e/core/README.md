@@ -39,7 +39,19 @@ hand-picked set of tags.
 9. The API answers `401` on an admin route over TLS verified against the
    evaluation CA.
 
-It deletes the cluster and its work directory when it finishes, pass or fail.
+With `MIRROR=1` it installs the same from a registry mirror
+([registry mirroring](../../../docs/registry-mirroring.md)). It runs a local
+registry (`registry:2`, pinned by digest) and sets the platform values'
+`registry` block to it. It copies what the install pulls
+(`scripts/mirror-list.sh --installed`, then `crane copy`, digests intact),
+checks the copy with `scripts/verify-digests.sh --mirror`, and points the kind
+nodes' containerd at the registry. Checks 1, 2 and 4 then also require the
+mirror host: helmfile installs and pulls the charts from the mirror, the
+rendered images are the mirror's, and every pod's `imageID` is the BOM digest
+pulled from the mirror.
+
+It deletes the cluster, the mirror and its work directory when it finishes,
+pass or fail.
 
 ## Run it
 
@@ -52,6 +64,7 @@ Requirements: an **amd64** Docker engine, `kind`, `helm` 3.17 or later,
 tests/e2e/core/run.sh                     # highest tested Kubernetes version
 K8S_VERSION=1.32.11 tests/e2e/core/run.sh # a specific entry in kubernetes.tested
 POSTGRES_VERSION=17 tests/e2e/core/run.sh # an entry in dependencies.postgresql.tested
+MIRROR=1 tests/e2e/core/run.sh            # from a local registry mirror (needs crane)
 KEEP_CLUSTER=1 tests/e2e/core/run.sh      # keep the cluster for debugging
 ```
 
@@ -59,7 +72,8 @@ The generated inputs go to the run's work directory, not to `generated/`.
 CI runs the test on GitHub-hosted `ubuntu-latest` runners, with a matrix
 generated from the BOM: the default PostgreSQL version on every entry in
 `kubernetes.tested`, and every other entry in `dependencies.postgresql.tested`
-on the highest Kubernetes version. The database version and the Kubernetes
+on the highest Kubernetes version, and one run from a registry mirror on the
+highest Kubernetes version. The database version and the Kubernetes
 version are independent: Steward reaches PostgreSQL over TCP, and admission,
 cert-manager and NetworkPolicy do not depend on the database version, so
 crossing every pair would add runs without adding coverage.
