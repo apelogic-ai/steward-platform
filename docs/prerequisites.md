@@ -18,7 +18,8 @@ issue that tracks them.
 | [PodSecurity `privileged` namespaces](#podsecurity) | Not needed | Required |
 | [Paid LLM API](#llm-api) | Not needed | Required |
 
-The **core** profile is Steward alone: API, admission webhook and controller.
+The **core** profile is Steward alone (API, admission webhook and
+controller), with cert-manager issuing its service certificates.
 The **governed** profile adds steward-run, github-oidc-exchange, mcp-gw and
 their external dependencies. Only core is in the BOM today; governed is tracked
 in [#3](https://github.com/apelogic-ai/steward-platform/issues/3).
@@ -65,7 +66,15 @@ Plan for:
 - egress to Google's sign-in endpoints when browser login is on, which Google
   does not publish as stable ranges;
 - CNI-specific handling of the Kubernetes API address (service IP or endpoint
-  IP, and port).
+  IP, and port);
+- webhook calls from the API server. Steward uses the same Kubernetes API
+  CIDRs both for its own egress to the API and for admitting the API server's
+  calls to its admission webhook, so they must include the addresses that
+  traffic comes from (usually the control-plane endpoints, not the Service
+  IP).
+
+In the reference install these addresses are `cluster.kubeApi` and
+`database.cidrs` in the [platform values](platform-values.md).
 
 Known gaps:
 [apelogic-ai/steward#152](https://github.com/apelogic-ai/steward/issues/152),
@@ -77,7 +86,8 @@ Known gaps:
 
 Steward needs a separately operated PostgreSQL database; PostgreSQL 16 is the
 tested line. The chart does not create one. The BOM's `postgresql` entry is for
-evaluation and tests only. See the
+evaluation and tests only: the kind reference install runs it in the cluster,
+without persistence or TLS. See the
 [Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md)
 for the required database role.
 

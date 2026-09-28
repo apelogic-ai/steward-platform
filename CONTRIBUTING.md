@@ -37,15 +37,21 @@ To bump a product:
 3. Bump `platformVersion`. The platform uses calendar versions
    (`YYYY.M.PATCH`, with an optional `-alpha.N`, `-beta.N` or `-rc.N`
    pre-release suffix).
-4. Run the local checks:
+4. Regenerate the Flux example, which is generated from the BOM:
+   `scripts/generate-examples.sh`. If the product's chart values changed,
+   update [`scripts/lib/platform.jq`](scripts/lib/platform.jq) and the chart
+   links in [docs/platform-values.md](docs/platform-values.md).
+5. Run the local checks:
 
    ```sh
    scripts/validate-bom.sh
    scripts/verify-digests.sh
    GH_TOKEN=... scripts/verify-attestations.sh
+   tests/generate/run.sh
+   FLUX_SCHEMAS_DIR=... tests/flux/run.sh
    ```
 
-5. Open a pull request. CI repeats those checks and runs the end-to-end tests
+6. Open a pull request. CI repeats those checks and runs the end-to-end tests
    against the new BOM. Merge only when every check is green.
 
 To add or change a tested Kubernetes version, edit `kubernetes.tested`. The CI

@@ -1,0 +1,152 @@
+# Install order
+
+The order in which to install the platform, and why. This page covers only
+what no single product owns: the sequence across products and the values that
+join them. Each product's installation guide stays the authority for its own
+steps; where this page and a product guide disagree about that product's
+procedure, the product guide wins.
+
+The **core** sequence is implemented by the reference installs
+([helmfile](../helmfile/README.md), [Flux](../examples/flux/core/README.md))
+and proven by the [core end-to-end test](../tests/e2e/core/README.md). The
+**governed** sequence is an outline until the governed reference install lands
+([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
+
+## 1. Choose the profile and check prerequisites
+
+| Profile | Installs | Needs |
+|---|---|---|
+| core | Steward API, admission webhook and controller; cert-manager for service TLS | PostgreSQL 16 |
+| governed | core plus steward-run, github-oidc-exchange, mcp-gw and the execution dependencies | everything in [prerequisites](prerequisites.md), including browser login |
+
+Core is the starting point even when governed execution is the goal: every
+governed step below assumes a working core install. Check
+[prerequisites](prerequisites.md) first, in particular amd64 nodes,
+Kubernetes 1.32 to 1.34, and a CNI that enforces NetworkPolicy with literal
+CIDRs.
+
+## 2. Take the version set from the BOM
+
+[`bom/bom.json`](../bom/bom.json) is the exact set of product releases and
+dependency versions tested together, pinned by digest. Install from it rather
+than assembling versions from product repositories, and check it the way CI
+does ([verification](verification.md)). The Kubernetes version must satisfy
+every installed chart at once; the BOM's `kubernetes` range is that
+intersection.
+
+## 3. Write the platform values and generate
+
+Describe the environment once in a [platform values](platform-values.md)
+file: namespaces, the cluster's API address and token audience, TLS mode, and
+the database. Then generate every chart's values from it and the BOM:
+
+```sh
+scripts/generate.sh environments/<name>/platform-values.yaml
+```
+
+Values that several charts must agree on (issuer URLs, audiences, namespaces,
+trust domain, workload identities) have one home in that file, so they cannot
+disagree between charts.
+
+## 4. Provide what the operator owns
+
+Production installs never use the evaluation pieces. Before installing, in
+the Steward namespace:
+
+- **PostgreSQL 16** and the Secret holding its URL, plus its CA for
+  `verify-full`. Steward's
+  [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md)
+  lists the required database role.
+- **A certificate issuer** that your PKI approves (cert-manager mode), or the
+  two TLS Secrets and the public CA bundle (customer-Secret mode).
+- **NetworkPolicy addresses** for the Kubernetes API and PostgreSQL, in the
+  platform values.
+
+The kind evaluation environment replaces the first two with in-cluster
+PostgreSQL and a self-signed CA; see [helmfile/README.md](../helmfile/README.md).
+
+## 5. Install core
+
+In this order; the helmfile's `needs` and the Flux `dependsOn` enforce it.
+
+1. **cert-manager**, from the BOM. Skip it if the cluster already runs
+   cert-manager. It must be ready before anything creates `Certificate` or
+   `Issuer` objects.
+2. **Evaluation pieces**, evaluation only: the self-signed CA issuer and
+   in-cluster PostgreSQL.
+3. **Steward**, from the BOM. The chart creates its two service certificates
+   through cert-manager, and cert-manager injects the CA into Steward's
+   admission webhook. Helm installs the `AgentRuntime` CRD from the chart's
+   `crds/` directory on first install only; later CRD changes are applied by
+   hand ([how](../helmfile/README.md#upgrades-and-the-steward-crd)).
+
+Then check the install the way the end-to-end test does: pods run the BOM
+digests, migrations applied, both certificates ready, the webhook denies an
+invalid `AgentRuntime`, and the API answers over verified TLS. Steward's
+[post-install checks](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md#post-install-and-delivery-tests)
+cover the rest.
+
+Helm creates no Steward users, grants, templates or Envelopes. Administration
+after install is Steward's:
+[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
+
+## 6. Governed mode (outline)
+
+Not yet a reference install; tracked in
+[#3](https://github.com/apelogic-ai/steward-platform/issues/3), which adds
+the governed BOM profile, generation for the reserved platform values, and a
+governed end-to-end test. Exact versions will come from the governed BOM
+profile; until then, follow each product's guide at its current release.
+
+### What sets the order
+
+A governed Task is admitted only against the submitting user's active User
+Envelope in Steward. That user's canonical ID is created at their first
+browser login to Steward, and github-oidc-exchange must put that same ID into
+the task token. So the exchange's policy cannot be final until Steward is
+running and the user has signed in, and steward-run cannot authenticate until
+that policy is final. The order resolves this by installing the exchange early
+and enrolling it late.
+
+### Sequence
+
+1. **Core Steward**, with browser login and its HTTPS edge (steps 1 to 5
+   above, plus the reserved `publicEndpoints` and `browserAuth` values).
+2. **github-oidc-exchange, not yet enrolled.** Install it so that its issuer
+   URL and public JWKS exist; later steps need both. Its
+   [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/installation.md)
+   and [consumer contract](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/consumer-contract-v1.md)
+   own the details.
+3. **steward-run**: runner controller, runner scale set and the pinned
+   reusable workflow
+   ([installation](https://github.com/apelogic-ai/steward-run/blob/v0.7.1/docs/installation.md)).
+   Governed jobs fail authentication until step 6; one such run shows the real
+   GitHub claims that step 6 enrolls.
+4. **Wire Steward to the exchange**: Steward's task identity settings take the
+   exchange's issuer, audience and public JWKS
+   ([Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md)).
+5. **Provision authority in Steward**: the user signs in once, an
+   administrator grants roles, authors Envelope templates and approves the
+   user's Envelope. Record the user's canonical ID.
+6. **Enroll the exchange policy** with the observed claims and that canonical
+   ID
+   ([integration](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/integration.md)).
+7. **Accept in core mode**: one submission is authenticated and admitted
+   against the Envelope without running anything; wrong audience, issuer,
+   repository, ref or actor each fail closed.
+8. **Execution dependencies**: SPIRE, agent-sandbox, OpenShell, the
+   inference proxy and optionally mcp-gw
+   ([quickstart](https://github.com/apelogic-ai/mcp-gw/blob/v0.4.11/docs/quickstart.md)),
+   then enable Steward's governed execution.
+9. **Accept end to end**: a governed Task runs, its output matches, the audit
+   record holds the Envelope evidence, and the runtime is cleaned up.
+
+The seams between products (token formats, audiences, trust domain, network
+paths) get one page each in #3, linking the product-owned contracts.
+
+## Where this came from
+
+This page supersedes Steward's
+[platform deployment order](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/platform-deployment-order.md)
+for the cross-product sequence. Steward will link here
+([apelogic-ai/steward#140](https://github.com/apelogic-ai/steward/issues/140)).

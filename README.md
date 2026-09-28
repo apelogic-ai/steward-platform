@@ -18,7 +18,8 @@ The platform is four independently released products:
 
 Two install profiles are defined:
 
-- **core**: Steward alone, with a PostgreSQL database. No agent execution.
+- **core**: Steward alone, with a PostgreSQL database and cert-manager for its
+  service certificates. No agent execution.
 - **governed**: core plus the other three products and the external
   dependencies that governed execution needs (workload identity, sandboxing,
   inference proxy, runners). Not yet covered; see
@@ -40,6 +41,29 @@ Check these before you start. Details and known gaps are in
 - **PodSecurity `privileged` namespaces** for governed-mode runtimes and SPIRE.
 - **A paid LLM API** for governed mode.
 
+## Install
+
+Read [docs/install-order.md](docs/install-order.md) for the sequence, then
+use a reference install. Both install the core profile from the BOM, pinned by
+digest, with every chart's values generated from one
+[platform values](docs/platform-values.md) file.
+
+- **helmfile** (the reference tool): [helmfile/README.md](helmfile/README.md).
+  Evaluate on kind in three commands, or start from the production-shaped
+  environment:
+
+  ```sh
+  kind create cluster --name steward --config environments/kind/kind-config.yaml \
+    --image "$(jq -r '.kubernetes.tested | last | .nodeImage' bom/bom.json)"
+  scripts/generate.sh environments/kind/platform-values.yaml
+  helmfile --file helmfile/helmfile.yaml.gotmpl --environment kind \
+    --kube-context kind-steward sync
+  ```
+
+  This is exactly what the core end-to-end test runs in CI, on an amd64 host.
+- **Flux**: [examples/flux/core](examples/flux/core/README.md), the same
+  install as `OCIRepository` and `HelmRelease` objects, generated from the BOM.
+
 ## What this repository owns, and what it does not
 
 **Products own their contracts.** API shapes, chart values, CRDs, token formats,
@@ -54,8 +78,10 @@ This repository owns:
 - the BOM schema;
 - end-to-end tests that install from the BOM and prove the combination works;
 - platform prerequisites that follow from combining the products;
-- reference install tooling and install order (planned, see
-  [#2](https://github.com/apelogic-ai/steward-platform/issues/2));
+- the [platform values](docs/platform-values.md) file and the generator that
+  turns it into every chart's values;
+- reference installs (helmfile and Flux) and the
+  [install order](docs/install-order.md);
 - the platform release train (planned, see
   [#4](https://github.com/apelogic-ai/steward-platform/issues/4)).
 
