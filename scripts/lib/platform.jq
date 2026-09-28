@@ -77,6 +77,25 @@ def steward_api_hostname: "steward-apiserver.\(.namespaces.steward).svc.\(.clust
 # https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/browser-session-contract-v1.md
 def browser_callback_path: "/admin/auth/callback";
 
+# Every public apiserver path, for Steward's own web.httpRoute. The chart does
+# not enforce the list, so the platform supplies all of it: the task API and its
+# protected-resource metadata, the browser APIs and login, the GitHub
+# connection callback, the operator API and the application API. Everything
+# else is the web UI. From Steward's chart README and platform preflight:
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/scripts/steward-platform-preflight.py
+def steward_api_paths:
+  [
+    {type: "Exact", value: "/.well-known/oauth-protected-resource"},
+    {type: "PathPrefix", value: "/admin/api"},
+    {type: "PathPrefix", value: "/admin/auth"},
+    {type: "Exact", value: "/admin/connections/github/callback"},
+    {type: "PathPrefix", value: "/admin/operator"},
+    {type: "PathPrefix", value: "/app/api"},
+    {type: "PathPrefix", value: "/v1"}
+  ];
+def steward_web_paths: [{type: "PathPrefix", value: "/"}];
+
 # The Gateway listener both public hostnames attach to.
 def edge_parent_refs:
   [{name: .edge.gateway.name, namespace: .edge.gateway.namespace, sectionName: .edge.gateway.listener}];
@@ -211,8 +230,24 @@ def steward_values($bom; $ca_bundle):
               clientSecret: $v.browserAuth.google.clientSecret
             }
           },
-          # The web UI, on the same origin as the API.
-          web: {enabled: true, host: ($v.publicEndpoints.steward | origin_host)},
+          # The web UI, on the same origin as the API, and Steward's own
+          # routes: the API paths to the apiserver through a BackendTLSPolicy
+          # that verifies its certificate, everything else to the web UI.
+          web: {
+            enabled: true,
+            host: ($v.publicEndpoints.steward | origin_host),
+            httpRoute: {
+              enabled: true,
+              parentRefs: ($v | edge_parent_refs),
+              hostname: ($v.publicEndpoints.steward | origin_host),
+              apiPaths: steward_api_paths,
+              webPaths: steward_web_paths,
+              backendTls: {
+                hostname: ($v | steward_api_hostname),
+                caConfigMap: {name: $v.edge.stewardBackendCaConfigMap, key: "ca.crt"}
+              }
+            }
+          },
           networkPolicy: {
             browserAuthEgressCidrs: $v.networkPolicy.egressCidrs.browserAuth,
             # The edge data plane reaches the web UI and, as the chart's edge
@@ -367,7 +402,9 @@ def helmfile_environment($bom):
         postgresqlEvaluation: {enabled: ($v | uses_evaluation_database)},
         steward: {
           chart: ($bom.products.steward.chart | chart_ref),
-          version: $bom.products.steward.chart.version
+          version: $bom.products.steward.chart.version,
+          # Steward renders Gateway API objects itself, so it needs their CRDs.
+          routes: ($v | browser_admin)
         },
         envoyGateway: (
           {enabled: ($v | installs_edge)}
@@ -378,7 +415,8 @@ def helmfile_environment($bom):
         ),
         edgeEvaluationCa: {enabled: ($v | uses_evaluation_gateway)},
         evaluationEdge: {enabled: ($v | uses_evaluation_gateway)},
-        stewardEdge: {enabled: ($v | task_auth)},
+        # browser-admin routes through Steward's own web.httpRoute instead.
+        stewardEdge: {enabled: (($v | task_auth) and ($v | browser_admin | not))},
         identityExchange: (
           {enabled: ($v | task_auth)}
           + (if $v | task_auth then
@@ -475,8 +513,10 @@ def generate($bom; $ca_bundle):
   + (if $v | uses_evaluation_issuer then {"values/evaluation-ca.yaml": evaluation_ca_values} else {} end)
   + (if $v | uses_evaluation_database then {"values/postgresql-evaluation.yaml": ($v | postgresql_evaluation_values($bom))} else {} end)
   + (if $v | task_auth then
-      {"values/github-oidc-exchange.yaml": ($v | identity_values($bom)),
-       "values/steward-edge.yaml": ($v | steward_edge_values)}
+      {"values/github-oidc-exchange.yaml": ($v | identity_values($bom))}
+    else {} end)
+  + (if ($v | task_auth) and ($v | browser_admin | not) then
+      {"values/steward-edge.yaml": ($v | steward_edge_values)}
     else {} end)
   + (if $v | installs_edge then
       {"values/envoy-gateway.yaml": envoy_gateway_values($bom)}

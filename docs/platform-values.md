@@ -36,7 +36,7 @@ writes `generated/<environment>/`:
 | `values/evaluation-ca.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca), when the evaluation issuer is used |
 | `values/postgresql-evaluation.yaml` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation), when the evaluation database is used |
 | `values/github-oidc-exchange.yaml` | github-oidc-exchange chart (task-auth, browser-admin) |
-| `values/steward-edge.yaml` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API routes and BackendTLSPolicy (task-auth) |
+| `values/steward-edge.yaml` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API routes and BackendTLSPolicy (task-auth only; browser-admin uses Steward's own routes) |
 | `values/envoy-gateway.yaml` | Envoy Gateway, without its bundled CRDs (task-auth and browser-admin, when `edge.install` is true). The helmfile applies the BOM's CRD manifests first. |
 | `values/edge-evaluation-ca.yaml`, `values/evaluation-edge.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca) again, for the edge, and [`charts/evaluation-edge`](../charts/evaluation-edge): the evaluation Gateway (task-auth and browser-admin, when `edge.gateway.source` is `evaluation`) |
 | `flux/` | Flux `OCIRepository` and `HelmRelease` objects for the same install, for the core profile when no evaluation piece is used. [`examples/flux/core`](../examples/flux/core) is this output for the production example. Flux output for task-auth and browser-admin is not generated yet. |
@@ -108,9 +108,12 @@ and forbids them for `profile: core`.
 | `identityExchange.keyring` | github-oidc-exchange `config.keyringSecretName`, `rolloutRevisions.githubKeyring` | The Secret is yours to create. |
 | `identityExchange.publicJwksConfigMap` | Steward `taskIdentity.publicJwksConfigMap` | The exchange's public JWKS (`keyring-tool export-jwks`), in the Steward namespace. Steward does not fetch the issuer's JWKS. |
 
-The Steward edge route comes from [`charts/steward-edge`](../charts/steward-edge),
-not from Steward's own `web.httpRoute`, because that interface requires
-Steward's browser web UI and therefore browser login.
+In task-auth, the Steward edge route comes from
+[`charts/steward-edge`](../charts/steward-edge), not from Steward's own
+`web.httpRoute`, because that interface requires Steward's browser web UI and
+therefore browser login
+([apelogic-ai/steward#180](https://github.com/apelogic-ai/steward/issues/180)).
+browser-admin has both, so it uses Steward's routes instead.
 
 ### Implemented (browser-admin)
 
@@ -143,6 +146,17 @@ The generator also sets, for browser-admin:
   checks that this projection equals the signed release manifest, field for
   field. Steward requires it whenever browser administration is on.
 - `images.web` from the BOM, and `web.enabled`.
+- Steward's own edge, `web.httpRoute`, on the `edge.gateway` listener: the
+  `steward-api` route with every public apiserver path from Steward's
+  [chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md)
+  (the chart does not enforce the list, so the generator supplies all of it:
+  `/.well-known/oauth-protected-resource` and
+  `/admin/connections/github/callback` exactly, and the `/admin/api`,
+  `/admin/auth`, `/admin/operator`, `/app/api` and `/v1` prefixes), the
+  `steward-web` route for `/`, and the `BackendTLSPolicy` that verifies the
+  apiserver certificate against `edge.stewardBackendCaConfigMap`. The helmfile
+  installs Steward after Envoy Gateway, whose release applies the Gateway API
+  CRDs, and does not install `charts/steward-edge`.
 - `networkPolicy.ingressNamespace` set to `networkPolicy.edgeNamespace`: with
   the web UI on, the chart admits the edge to both the web UI and the
   apiserver, so the edge is not added to `apiserverIngressNamespaces`.

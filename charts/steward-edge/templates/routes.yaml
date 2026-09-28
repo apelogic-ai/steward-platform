@@ -1,7 +1,9 @@
 {{- /*
-Steward's task API paths only. The Steward chart README lists every public
-API path and owns their meaning; the browser, admin and connection paths are
-left out because this edge serves no browser UI:
+Steward's task API paths only, for profiles without Steward's web UI (until
+apelogic-ai/steward#180). The Steward chart README lists every public API path
+and owns their meaning; the browser, admin and connection paths are left out
+because this edge serves no browser UI. With the web UI (browser-admin),
+Steward's own web.httpRoute replaces this chart:
 https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md
 */ -}}
 apiVersion: gateway.networking.k8s.io/v1

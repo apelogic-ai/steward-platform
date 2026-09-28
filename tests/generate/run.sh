@@ -109,6 +109,33 @@ check_browser_admin() {
   else
     fail "${name}: Steward web does not render the BOM image"
   fi
+  # The edge: Steward's own routes carry every public API path to the
+  # apiserver and the rest to the web UI; the platform's API-only route is
+  # not generated.
+  local host api_paths
+  host="${origin#https://}"
+  api_paths="$(jq -cn -L "${repo_root}/scripts/lib" 'include "platform"; steward_api_paths')"
+  if yq -o=json -I=0 'select(.kind == "HTTPRoute" and .metadata.name == "steward-api")' "${rendered}" \
+    | jq -e --arg host "${host}" --argjson paths "${api_paths}" '
+        .spec.hostnames == [$host] and (.spec.rules | length) == 1
+        and ([.spec.rules[0].matches[].path] == $paths)
+        and .spec.rules[0].backendRefs == [{name: "steward-apiserver", port: 443}]' >/dev/null \
+    && yq -o=json -I=0 'select(.kind == "HTTPRoute" and .metadata.name == "steward-web")' "${rendered}" \
+    | jq -e --arg host "${host}" '
+        .spec.hostnames == [$host]
+        and [.spec.rules[0].matches[].path] == [{type: "PathPrefix", value: "/"}]
+        and .spec.rules[0].backendRefs == [{name: "steward-web", port: 3000}]' >/dev/null \
+    && yq -o=json -I=0 'select(.kind == "BackendTLSPolicy" and .metadata.name == "steward-apiserver")' "${rendered}" \
+    | jq -e --arg ns "$(yq -r .namespaces.steward "${values}")" --arg cm "$(yq -r .edge.stewardBackendCaConfigMap "${values}")" '
+        .spec.validation.hostname == "steward-apiserver.\($ns).svc.cluster.local"
+        and .spec.validation.caCertificateRefs == [{group: "", kind: "ConfigMap", name: $cm}]' >/dev/null; then
+    pass "${name}: Steward routes all $(jq length <<<"${api_paths}") public API paths to the apiserver over verified TLS, the rest to the web UI"
+  else
+    fail "${name}: Steward's own routes are not the full API path list, the web route and the BackendTLSPolicy"
+  fi
+  if [[ -e "${work}/out/${name}/values/steward-edge.yaml" ]]; then
+    fail "${name}: the platform's API-only steward-edge route is generated too"
+  fi
 }
 
 # Render one generated environment with every chart it configures.
@@ -279,6 +306,17 @@ RELEASES
         pass "${name}: helmfile applies the BOM CRD manifests before envoy-gateway"
       else
         fail "${name}: the envoy-gateway release does not apply the BOM CRD manifests first"
+      fi
+    fi
+    # browser-admin: Steward renders its own Gateway API objects, so it waits
+    # for the release that applies their CRDs, and steward-edge is not installed.
+    if [[ "${profile}" == browser-admin ]]; then
+      if yq -e 'select(.releases) | .releases[] | select(.name == "steward") | .needs[] | select(test("/envoy-gateway$"))' \
+          "${work}/helmfile-${name}.yaml" >/dev/null 2>&1 \
+        && ! yq -e 'select(.releases) | .releases[] | select(.name == "steward-edge")' "${work}/helmfile-${name}.yaml" >/dev/null 2>&1; then
+        pass "${name}: helmfile installs Steward after envoy-gateway and without steward-edge"
+      else
+        fail "${name}: helmfile must install Steward after envoy-gateway, and not install steward-edge"
       fi
     fi
     if helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \

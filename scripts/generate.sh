@@ -12,7 +12,8 @@
 #   values/evaluation-ca.yaml           when the evaluation CA issuer is used
 #   values/postgresql-evaluation.yaml   when the evaluation database is used
 #   values/github-oidc-exchange.yaml    task-auth, browser-admin: github-oidc-exchange chart values
-#   values/steward-edge.yaml            task-auth: Steward's task API routes (charts/steward-edge)
+#   values/steward-edge.yaml            task-auth: Steward's task API routes (charts/steward-edge);
+#                                       browser-admin uses Steward's own web.httpRoute
 #   values/envoy-gateway.yaml           task-auth, browser-admin, when edge.install is true
 #   values/edge-evaluation-ca.yaml      task-auth, browser-admin, when the evaluation Gateway is used
 #   values/evaluation-edge.yaml         task-auth, browser-admin, when the evaluation Gateway is used
