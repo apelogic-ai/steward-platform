@@ -3,13 +3,15 @@
 # reference install.
 #
 # Creates a kind cluster from environments/kind/kind-config.yaml and the BOM
-# node image, runs scripts/generate.sh on environments/kind/platform-values.yaml,
-# installs with helmfile/helmfile.yaml.gotmpl (cert-manager, the evaluation CA,
-# evaluation PostgreSQL and Steward), then asserts that:
+# node image, runs scripts/generate.sh on environments/kind/platform-values.yaml
+# (with database.evaluationVersion set when POSTGRES_VERSION is), installs with
+# helmfile/helmfile.yaml.gotmpl (cert-manager, the evaluation CA, evaluation
+# PostgreSQL and Steward), then asserts that:
 #   - helmfile installs each BOM chart at its BOM digest, and the Steward chart
 #     at that digest has the BOM version;
 #   - the rendered chart and the running pods use the exact image digests from
 #     the BOM (Steward, cert-manager, PostgreSQL);
+#   - PostgreSQL runs the exact tested version under test;
 #   - every database migration applied;
 #   - cert-manager issued both Steward certificates from the evaluation CA and
 #     injected the CA into the webhook;
@@ -20,6 +22,8 @@
 # Env:
 #   BOM           path to the BOM (default: bom/bom.json)
 #   K8S_VERSION   a version from kubernetes.tested (default: the highest)
+#   POSTGRES_VERSION  a version from dependencies.postgresql.tested, major
+#                 ("17") or exact (default: the BOM default version)
 #   KEEP_CLUSTER  set to 1 to keep the cluster and work directory for debugging
 # Needs: docker (linux/amd64 engine), kind, helm, helmfile, kubectl, jq, yq
 # (mikefarah v4), check-jsonschema, openssl, curl, tar.
@@ -67,7 +71,20 @@ cert_manager_images=()
 for component in controller webhook cainjector; do
   cert_manager_images+=("$(bom_get ".dependencies[\"cert-manager\"].images.${component}")")
 done
-postgres_ref="$(bom_get .dependencies.postgresql.images.postgres)"
+postgres_wanted="${POSTGRES_VERSION:-}"
+if [[ -n "${postgres_wanted}" ]]; then
+  postgres_entry="$(jq -er --arg w "${postgres_wanted}" '
+    [.dependencies.postgresql.tested // [] | .[] | select(.version == $w or (.version | startswith($w + ".")))]
+    | select(length == 1) | .[0] | "\(.version) \(.images.postgres)"' "${bom}")" || {
+    echo "PostgreSQL ${postgres_wanted} does not name exactly one entry of dependencies.postgresql.tested" >&2
+    exit 2
+  }
+  postgres_version="${postgres_entry% *}"
+  postgres_ref="${postgres_entry#* }"
+else
+  postgres_version="$(bom_get .dependencies.postgresql.version)"
+  postgres_ref="$(bom_get .dependencies.postgresql.images.postgres)"
+fi
 
 environment="$(values_get .environment)"
 namespace="$(values_get .namespaces.steward)"
@@ -159,13 +176,18 @@ if [[ "${docker_arch}" != x86_64 && "${docker_arch}" != amd64 ]]; then
   exit 2
 fi
 
-echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}, environment ${environment}"
+echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, environment ${environment}"
 echo "owned cluster ${cluster}, work directory ${run_dir}"
 
 # --- Generate and check the reference install inputs ------------------------
 
 stage=generate
-"${repo_root}/scripts/generate.sh" --bom "${bom}" --out "${generated}/${environment}" "${platform_values}"
+install_values="${platform_values}"
+if [[ -n "${postgres_wanted}" ]]; then
+  install_values="${run_dir}/platform-values.yaml"
+  yq ".database.evaluationVersion = \"${postgres_wanted}\"" "${platform_values}" > "${install_values}"
+fi
+"${repo_root}/scripts/generate.sh" --bom "${bom}" --out "${generated}/${environment}" "${install_values}"
 "${HF[@]}" build > "${run_dir}/helmfile-build.yaml"
 for pinned in "${chart_reference}@${chart_digest}" "${cert_manager_chart}"; do
   release="${pinned%@*}"
@@ -267,6 +289,15 @@ ip_in_any "${postgres_ip}" "${postgres_cidrs[@]}" || {
   exit 1
 }
 echo "pass: PostgreSQL pod ${postgres_ip} is inside the NetworkPolicy database CIDRs"
+
+stage=assert-postgres-version
+server_version="$("${KN[@]}" exec "deployment/${postgres_name}" -- \
+  psql -U steward -d steward -Atc "SHOW server_version")"
+if [[ "${server_version}" != "${postgres_version}" ]]; then
+  echo "PostgreSQL server is ${server_version}, expected ${postgres_version}" >&2
+  exit 1
+fi
+echo "pass: PostgreSQL server is ${server_version}"
 
 stage=assert-migrations
 migration_counts="$("${KN[@]}" exec "deployment/${postgres_name}" -- \
@@ -372,4 +403,4 @@ fi
 echo "pass: API answered 401 on an admin route over TLS verified against the evaluation CA"
 
 stage=complete
-echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}, reference install (${environment})"
+echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, reference install (${environment})"

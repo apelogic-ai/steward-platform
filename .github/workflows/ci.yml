@@ -133,16 +133,31 @@ jobs:
     timeout-minutes: 5
     outputs:
       versions: ${{ steps.versions.outputs.versions }}
+      core: ${{ steps.versions.outputs.core }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Read tested Kubernetes versions from the BOM
+      # core runs the default PostgreSQL version on every tested Kubernetes
+      # version, and each other tested PostgreSQL version on the highest one:
+      # the database version and the Kubernetes version are independent axes
+      # (Steward reaches PostgreSQL over TCP; admission, cert-manager and
+      # NetworkPolicy do not depend on the database version). The default
+      # entries install the kind environment unchanged (no override).
+      - name: Read tested Kubernetes and PostgreSQL versions from the BOM
         id: versions
-        run: echo "versions=$(jq -c '[.kubernetes.tested[].version]' bom/bom.json)" >> "${GITHUB_OUTPUT}"
+        run: |
+          echo "versions=$(jq -c '[.kubernetes.tested[].version]' bom/bom.json)" >> "${GITHUB_OUTPUT}"
+          echo "core=$(jq -c '
+            (.kubernetes.tested | map(.version)) as $k8s
+            | ($k8s | max_by(split(".") | map(tonumber))) as $highest
+            | .dependencies.postgresql as $pg
+            | [$k8s[] | {k8s: ., postgres: $pg.version, override: ""}]
+              + [$pg.tested[].version | select(. != $pg.version) | {k8s: $highest, postgres: ., override: .}]
+          ' bom/bom.json)" >> "${GITHUB_OUTPUT}"
 
   e2e-core:
-    name: core e2e (Kubernetes ${{ matrix.k8s }})
+    name: core e2e (Kubernetes ${{ matrix.k8s }}, PostgreSQL ${{ matrix.postgres }})
     needs: [validate, e2e-plan]
     # Steward images are linux/amd64 only; ubuntu-latest is amd64.
     runs-on: ubuntu-latest
@@ -150,7 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        k8s: ${{ fromJSON(needs.e2e-plan.outputs.versions) }}
+        include: ${{ fromJSON(needs.e2e-plan.outputs.core) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -162,6 +177,7 @@ jobs:
       - name: Run core e2e through the reference install
         env:
           K8S_VERSION: ${{ matrix.k8s }}
+          POSTGRES_VERSION: ${{ matrix.override }}
         run: tests/e2e/core/run.sh
 
   e2e-browser-admin:

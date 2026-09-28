@@ -70,6 +70,13 @@ To add or change a tested Kubernetes version, edit `kubernetes.tested`. The CI
 end-to-end matrix is generated from that list, so the BOM and the test coverage
 cannot drift apart.
 
+To add or change a tested PostgreSQL version, edit
+`dependencies.postgresql.tested` (the version and its image, pinned by digest).
+The core end-to-end matrix is generated from that list too. `version` and
+`images` are the default the reference install uses and must match one tested
+entry; `minVersion` must itself be tested. Update the tested versions in
+[docs/prerequisites.md](docs/prerequisites.md#postgresql).
+
 ## Scripts
 
 - Bash with `set -euo pipefail`, clean under `shellcheck`.
