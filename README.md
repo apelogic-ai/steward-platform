@@ -129,11 +129,14 @@ verifies the product attestations and signatures. See [docs/verification.md](doc
 
 ## Status
 
-Pre-release. The current BOM (`2026.10.0-alpha.4`) pins the core, task-auth
-and browser-admin profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
-cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for evaluation,
-PostgreSQL 16.
-There are no platform releases yet.
+Pre-release. The current BOM, `2026.10.0-alpha.5`, is the first platform
+pre-release: see its [release notes](docs/releases/2026.10.0-alpha.5.md) and
+the [changelog](CHANGELOG.md). It pins the core, task-auth and browser-admin
+profiles: Steward 0.3.2, github-oidc-exchange 0.7.2 and steward-run 0.7.2,
+with cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for
+evaluation, PostgreSQL 16. mcp-gw 0.5.0 is pinned for the governed profile but
+not installed or tested yet. The governed profile, which runs agents, is not
+implemented ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
 
 ## Contributing and security
 
