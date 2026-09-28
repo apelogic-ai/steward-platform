@@ -5,7 +5,7 @@
 # addresses below are documentation ranges (RFC 5737) and do not work as-is.
 #
 # Before installing, the operator provides (see docs/install-order.md):
-#   - a PostgreSQL 16 database and the Secret named in database.secret;
+#   - a PostgreSQL 16 or later database and the Secret named in database.secret;
 #   - the database CA named in database.tls.ca;
 #   - the cert-manager issuer named in tls.certManager.issuer.ref.
 apiVersion: steward-platform/v1

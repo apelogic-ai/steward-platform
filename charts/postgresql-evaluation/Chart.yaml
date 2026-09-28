@@ -3,7 +3,8 @@ name: postgresql-evaluation
 description: >-
   Evaluation only. A single PostgreSQL pod for Steward on a throwaway cluster:
   no persistence, no TLS, no backups. It also writes the Steward database
-  Secret. Production uses a separately operated PostgreSQL 16.
+  Secret. The image, one of the BOM's tested PostgreSQL versions, comes from
+  the generator. Production uses a separately operated PostgreSQL 16 or later.
 type: application
 version: 0.1.0
 kubeVersion: ">=1.32.0-0"

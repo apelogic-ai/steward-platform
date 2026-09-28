@@ -21,7 +21,7 @@ Upgrading an existing pre-platform install instead? Use the
 
 | Profile | Installs | Needs |
 |---|---|---|
-| core | Steward API, admission webhook and controller; cert-manager for service TLS | PostgreSQL 16 |
+| core | Steward API, admission webhook and controller; cert-manager for service TLS | PostgreSQL ≥ 16 (tested: 16.14, 17.11) |
 | task-auth | core plus github-oidc-exchange behind an Envoy Gateway edge | a GitHub Actions job that can reach the edge |
 | browser-admin | task-auth plus Steward's web UI and Google sign-in | a Google Workspace OAuth client |
 | governed | core plus steward-run, github-oidc-exchange, mcp-gw and the execution dependencies | everything in [prerequisites](prerequisites.md), including browser login |
@@ -60,8 +60,8 @@ disagree between charts.
 Production installs never use the evaluation pieces. Before installing, in
 the Steward namespace:
 
-- **PostgreSQL 16** and the Secret holding its URL, plus its CA for
-  `verify-full`. Steward's
+- **PostgreSQL 16 or later** ([tested versions](prerequisites.md#postgresql))
+  and the Secret holding its URL, plus its CA for `verify-full`. Steward's
   [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)
   lists the required database role.
 - **A certificate issuer** that your PKI approves (cert-manager mode), or the

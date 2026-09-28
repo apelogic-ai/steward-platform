@@ -46,7 +46,7 @@ Check these before you start. Details and known gaps are in
 - **amd64 nodes.** Steward images are linux/amd64 only.
 - **Kubernetes 1.32 to 1.34**, the tested platform window.
 - **A CNI that enforces NetworkPolicy**, with peers given as literal CIDRs.
-- **PostgreSQL 16**, operated separately.
+- **PostgreSQL 16 or later**, operated separately (tested: 16.14 and 17.11).
 - **Google Workspace** for browser login, which is Google-only today. The
   browser-admin profile and governed use need it.
 - **GitHub.com** for governed jobs. GitHub Enterprise Server and GitLab are not
@@ -124,7 +124,10 @@ image is the full `registry/repository:tag@sha256:...` string under
 
 An `evaluation-only` dependency is used by tests and evaluation installs.
 Production installs bring their own equivalent, for example a managed
-PostgreSQL 16. A `reference-install` dependency, such as cert-manager, is
+PostgreSQL at or above the dependency's `minVersion`. A dependency with
+`tested` lists every exact version the end-to-end tests run on, each with its
+own images; `version` and `images` are the default the reference install
+uses. A `reference-install` dependency, such as cert-manager, is
 installed by the reference installs in every environment; an operator who
 already runs it can keep their own.
 
@@ -138,9 +141,9 @@ pre-release: see its [release notes](docs/releases/2026.10.0-alpha.5.md) and
 the [changelog](CHANGELOG.md). It pins the core, task-auth and browser-admin
 profiles: Steward 0.3.2, github-oidc-exchange 0.7.2 and steward-run 0.7.2,
 with cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for
-evaluation, PostgreSQL 16. mcp-gw 0.5.0 is pinned for the governed profile but
-not installed or tested yet. The governed profile, which runs agents, is not
-implemented ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
+evaluation, PostgreSQL 16.14 and 17.11. mcp-gw 0.5.0 is pinned for the
+governed profile but not installed or tested yet. The governed profile, which
+runs agents, is not implemented ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
 
 ## Contributing and security
 
