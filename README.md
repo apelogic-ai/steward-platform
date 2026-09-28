@@ -24,6 +24,23 @@ Two install profiles are defined:
   inference proxy, runners). Not yet covered; see
   [#3](https://github.com/apelogic-ai/steward-platform/issues/3).
 
+## Hard prerequisites
+
+Check these before you start. Details and known gaps are in
+[docs/prerequisites.md](docs/prerequisites.md).
+
+- **amd64 nodes.** Steward images are linux/amd64 only.
+- **Kubernetes 1.30 to 1.34** for the full platform. Core alone accepts 1.30
+  and later.
+- **A CNI that enforces NetworkPolicy**, with peers given as literal CIDRs.
+- **PostgreSQL 16**, operated separately.
+- **Google Workspace** for browser login, which is Google-only today. Governed
+  use needs it.
+- **GitHub.com** for governed jobs. GitHub Enterprise Server and GitLab are not
+  supported.
+- **PodSecurity `privileged` namespaces** for governed-mode runtimes and SPIRE.
+- **A paid LLM API** for governed mode.
+
 ## What this repository owns, and what it does not
 
 **Products own their contracts.** API shapes, chart values, CRDs, token formats,
