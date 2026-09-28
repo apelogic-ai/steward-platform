@@ -290,9 +290,31 @@
       "properties": {
         "description": { "type": "string", "minLength": 1 },
         "version": {
-          "description": "Upstream version.",
+          "description": "Upstream version. With tested, the default the reference install uses: one of the tested versions, with the same images.",
           "type": "string",
           "minLength": 1
+        },
+        "minVersion": {
+          "description": "Lowest supported upstream version, for a dependency that production installs bring themselves at any version from here up. It must be tested: at least one tested version starts with it.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)){0,2}$"
+        },
+        "tested": {
+          "description": "Exact versions the end-to-end tests run on, each with its own images (the same components as images). The default version is one of them.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "images"],
+            "properties": {
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)){1,2}$"
+              },
+              "images": { "$ref": "#/$defs/images" }
+            }
+          }
         },
         "source": {
           "description": "Upstream project.",
@@ -316,6 +338,10 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/manifest" }
         }
+      },
+      "dependentRequired": {
+        "minVersion": ["tested"],
+        "tested": ["minVersion", "images"]
       }
     },
     "profile": {
