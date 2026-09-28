@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/apelogic-ai/steward-platform/main/schemas/platform-values/v1.schema.json",
   "title": "Steward platform values, v1",
-  "description": "The one operator input for a platform install. It holds the values that several charts must agree on: namespaces, service account identities, cluster addresses, TLS, the database, public origins, audiences and the SPIFFE trust domain. scripts/generate.sh combines it with bom/bom.json into per-chart values and helmfile inputs. Fields marked x-reserved belong to governed mode; they are part of the design so that the file does not change shape later, but the v1 generator rejects them until governed mode lands. The task-auth profile implements the fields it needs: the public Steward origin and issuer, the task API audience, the github-oidc-exchange namespace and service account, the edge and the exchange's own settings.",
+  "description": "The one operator input for a platform install. It holds the values that several charts must agree on: namespaces, service account identities, cluster addresses, TLS, the database, public origins, audiences and the SPIFFE trust domain. scripts/generate.sh combines it with bom/bom.json into per-chart values and helmfile inputs. Fields marked x-reserved belong to governed mode; they are part of the design so that the file does not change shape later, but the v1 generator rejects them until governed mode lands. The task-auth profile implements the fields it needs: the public Steward origin and issuer, the task API audience, the github-oidc-exchange namespace and service account, the edge and the exchange's own settings. The browser-admin profile adds Steward's Google Workspace browser login, its browser-auth egress CIDRs and its administration settings.",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "environment", "purpose", "profile", "cluster", "namespaces", "tls", "database"],
@@ -22,8 +22,8 @@
       "enum": ["evaluation", "production"]
     },
     "profile": {
-      "description": "Install profile from the BOM. The v1 generator implements core and task-auth.",
-      "enum": ["core", "task-auth", "governed"]
+      "description": "Install profile from the BOM. The v1 generator implements core, task-auth and browser-admin (task-auth plus Steward's browser web UI and Google login).",
+      "enum": ["core", "task-auth", "browser-admin", "governed"]
     },
     "cluster": {
       "description": "Facts about the target cluster that chart values depend on.",
@@ -268,14 +268,16 @@
           "$ref": "#/$defs/dnsLabel"
         },
         "egressCidrs": {
-          "description": "Literal CIDRs for external peers. Reserved for governed mode.",
-          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "description": "Literal CIDRs for external peers.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "browserAuth": { "$ref": "#/$defs/cidrs", "description": "Google sign-in endpoints." },
-            "githubApi": { "$ref": "#/$defs/cidrs", "description": "GitHub API, for GitHub source retrieval and runners." },
-            "identityIssuer": { "$ref": "#/$defs/cidrs", "description": "github-oidc-exchange public issuer, when it is outside the cluster." }
+            "browserAuth": {
+              "$ref": "#/$defs/cidrs",
+              "description": "Google sign-in endpoints that Steward's apiserver calls over HTTPS (port 443) for the OIDC code exchange, discovery and keys (Steward's networkPolicy.browserAuthEgressCidrs). Google publishes no stable ranges for them, so the operator maintains this list (apelogic-ai/steward#152). browser-admin profile."
+            },
+            "githubApi": { "$ref": "#/$defs/cidrs", "description": "GitHub API, for GitHub source retrieval and runners. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" },
+            "identityIssuer": { "$ref": "#/$defs/cidrs", "description": "github-oidc-exchange public issuer, when it is outside the cluster. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" }
           }
         }
       }
@@ -286,7 +288,7 @@
       "additionalProperties": false,
       "properties": {
         "steward": {
-          "description": "Steward API origin: Steward's task-token resource (taskIdentity.resource), the edge hostname of Steward's API routes, and the steward-run API URL. task-auth profile.",
+          "description": "Steward API origin: Steward's task-token resource (taskIdentity.resource), the edge hostname of Steward's API routes, and the steward-run API URL. task-auth profile. In the browser-admin profile it is also the browser origin (browserAuth.google.origin), the web host and the Google OAuth redirect URI's origin.",
           "$ref": "#/$defs/httpsOriginOnly"
         },
         "identityIssuer": {
@@ -428,8 +430,7 @@
       }
     },
     "browserAuth": {
-      "description": "Browser login for Steward. Needs publicEndpoints.steward and an HTTPS edge. Reserved for governed mode.",
-      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "description": "Steward's browser login: Google Workspace OIDC, one hosted domain. The browser origin is publicEndpoints.steward. browser-admin profile.",
       "type": "object",
       "additionalProperties": false,
       "required": ["google"],
@@ -439,14 +440,24 @@
           "additionalProperties": false,
           "required": ["clientId", "workspaceDomain", "organizationId", "clientSecret"],
           "properties": {
-            "clientId": { "type": "string", "minLength": 1 },
-            "workspaceDomain": { "type": "string", "minLength": 1 },
+            "clientId": {
+              "description": "OAuth client ID of a Google Cloud \"Web application\" client (Steward's browserAuth.google.clientId). Not secret.",
+              "type": "string",
+              "pattern": "^[!-~]{1,255}$"
+            },
+            "workspaceDomain": {
+              "description": "The Google Workspace hosted domain (hd) whose users may sign in (Steward's browserAuth.google.workspaceDomain). Personal Google accounts carry no hosted domain and are rejected.",
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+              "not": { "enum": ["gmail.com", "googlemail.com"] }
+            },
             "organizationId": {
               "description": "Steward organization ID: a Steward-chosen stable namespace, not a Google or cloud organization ID. Same rule as the Steward 0.3.1 chart schema: 4 to 64 characters, org_ followed by lowercase ASCII letters, digits, _ or -.",
               "type": "string",
               "pattern": "^org_[a-z0-9_-]{0,60}$"
             },
             "clientSecret": {
+              "description": "Existing Secret in the Steward namespace whose key holds the OAuth client secret as one raw value, no trailing newline (Steward's browserAuth.google.clientSecret). The operator creates it.",
               "type": "object",
               "additionalProperties": false,
               "required": ["name", "key"],
@@ -458,12 +469,23 @@
           }
         }
       }
+    },
+    "administration": {
+      "description": "Steward browser administration settings. browser-admin profile.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capabilityCatalog": {
+          "description": "Steward's deployment-owned capability catalog (config.apiserver.capabilityCatalog), passed through unchanged and validated by the Steward chart's schema. Descriptive availability for the template editor, never authority. Steward refuses to author an Envelope template unless the catalog lists at least one model. Without it the chart default (an empty catalog) applies.",
+          "type": "object"
+        }
+      }
     }
   },
   "allOf": [
     {
-      "description": "The task-auth profile needs the edge, the public endpoints and the exchange settings.",
-      "if": { "properties": { "profile": { "const": "task-auth" } } },
+      "description": "The task-auth and browser-admin profiles need the edge, the public endpoints and the exchange settings.",
+      "if": { "properties": { "profile": { "enum": ["task-auth", "browser-admin"] } } },
       "then": {
         "required": ["publicEndpoints", "audiences", "edge", "identityExchange"],
         "properties": {
@@ -490,6 +512,27 @@
       }
     },
     {
+      "description": "The browser-admin profile needs browser login and its egress CIDRs.",
+      "if": { "properties": { "profile": { "const": "browser-admin" } } },
+      "then": {
+        "required": ["browserAuth", "networkPolicy"],
+        "properties": {
+          "networkPolicy": {
+            "required": ["egressCidrs"],
+            "properties": { "egressCidrs": { "required": ["browserAuth"] } }
+          }
+        }
+      },
+      "else": {
+        "not": { "anyOf": [
+          { "required": ["browserAuth"] },
+          { "required": ["administration"] },
+          { "required": ["networkPolicy"], "properties": { "networkPolicy": {
+            "required": ["egressCidrs"], "properties": { "egressCidrs": { "required": ["browserAuth"] } } } } }
+        ] }
+      }
+    },
+    {
       "description": "Production never uses the evaluation pieces.",
       "if": { "properties": { "purpose": { "const": "production" } } },
       "then": {
@@ -500,7 +543,10 @@
               "certManager": { "properties": { "issuer": { "properties": { "source": { "const": "operator" } } } } }
             }
           },
-          "edge": { "properties": { "gateway": { "properties": { "source": { "const": "operator" } } } } }
+          "edge": { "properties": { "gateway": { "properties": { "source": { "const": "operator" } } } } },
+          "networkPolicy": { "properties": { "egressCidrs": { "properties": {
+            "browserAuth": { "not": { "contains": { "enum": ["0.0.0.0/0", "::/0"] } } }
+          } } } }
         }
       }
     }

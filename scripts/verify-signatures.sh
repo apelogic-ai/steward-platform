@@ -110,6 +110,22 @@ for product in ${products}; do
   fi
   echo "ok   products.${product}: signed ${manifest_asset} names version ${version}, commit ${commit} and every pinned digest"
 
+  # The generator projects steward-run's coordinates into Steward's
+  # config.apiserver.stewardRunRelease. With Steward's documented mapping
+  # (schemaVersion -> manifestSchemaVersion, image -> governedJobContainerImage),
+  # the projection must be exactly the signed manifest's fields.
+  if [[ "${product}" == steward-run ]]; then
+    projected="$(jq -cS -n --slurpfile bom "${bom}" -L "${repo_root}/scripts/lib" \
+      'include "platform"; steward_run_release($bom[0])')"
+    signed="$(jq -cS '{manifestSchemaVersion: .schemaVersion, version, workflowRepository,
+      workflowCommit, actionCommit, governedJobContainerImage: .image}' "${dir}/manifest.json")"
+    if [[ "${projected}" != "${signed}" ]]; then
+      fail "products.${product}: the stewardRunRelease projection ${projected} differs from the signed ${manifest_asset}"
+      continue
+    fi
+    echo "ok   products.${product}: Steward's stewardRunRelease projection equals the signed ${manifest_asset}"
+  fi
+
   while IFS=$'\t' read -r subject asset digest; do
     label="products.${product}.${subject}"
     if [[ -z "${digest}" ]]; then

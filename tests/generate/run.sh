@@ -71,6 +71,46 @@ local_chart() {
   esac
 }
 
+# The value of one environment variable of the rendered apiserver container.
+apiserver_env() {
+  yq -r "select(.kind == \"Deployment\" and .metadata.name == \"steward-apiserver\")
+    | .spec.template.spec.containers[] | select(.name == \"apiserver\")
+    | .env[] | select(.name == \"$2\") | .value" "$1"
+}
+
+# browser-admin: the rendered Steward chart carries browser login, the web UI
+# at the BOM digest, and steward-run's release coordinates projected from the
+# BOM with Steward's documented mapping.
+check_browser_admin() {
+  local name="$1" values="$2" rendered="$3" origin expected actual
+  origin="$(yq -r .publicEndpoints.steward "${values}")"
+  expected="$(jq -cS -n --slurpfile bom "${bom}" -L "${repo_root}/scripts/lib" \
+    'include "platform"; steward_run_release($bom[0])')"
+  actual="$(apiserver_env "${rendered}" STEWARD_RUN_RELEASE_JSON | jq -cS .)"
+  if [[ "${actual}" == "${expected}" ]] && jq -e --slurpfile bom "${bom}" '
+      $bom[0].products["steward-run"] as $r
+      | .manifestSchemaVersion == $r.signatures.releaseManifest.schemaVersion
+        and .version == $r.version and .actionCommit == $r.action.commit
+        and .workflowRepository == $r.workflow.repository and .workflowCommit == $r.workflow.commit
+        and .governedJobContainerImage == ($r.images.runner | sub(":[^:@/]+@"; "@"))' <<<"${actual}" >/dev/null; then
+    pass "${name}: Steward renders stewardRunRelease projected from the BOM steward-run entry"
+  else
+    fail "${name}: stewardRunRelease is '${actual}', expected ${expected}"
+  fi
+  if [[ "$(apiserver_env "${rendered}" STEWARD_BROWSER_ORIGIN)" == "${origin}" \
+    && "$(apiserver_env "${rendered}" STEWARD_GOOGLE_OIDC_CLIENT_ID)" == "$(yq -r .browserAuth.google.clientId "${values}")" \
+    && "$(apiserver_env "${rendered}" STEWARD_GOOGLE_WORKSPACE_DOMAIN)" == "$(yq -r .browserAuth.google.workspaceDomain "${values}")" ]]; then
+    pass "${name}: Steward renders browser login for origin ${origin}"
+  else
+    fail "${name}: Steward does not render the browser login settings"
+  fi
+  if grep -Fq "image: $(jq -r .products.steward.images.web "${bom}")" "${rendered}"; then
+    pass "${name}: Steward web renders the BOM image"
+  else
+    fail "${name}: Steward web does not render the BOM image"
+  fi
+}
+
 # Render one generated environment with every chart it configures.
 check_environment() {
   local name="$1" values="$2" out="${work}/out/$1" again="${work}/again/$1"
@@ -105,6 +145,10 @@ check_environment() {
       fail "${name}: Steward ${component} does not render ${ref}"
     fi
   done
+
+  if [[ "$(yq -r .profile "${out}/helmfile.yaml")" == browser-admin ]]; then
+    check_browser_admin "${name}" "${values}" "${work}/steward-${name}.yaml"
+  fi
 
   if [[ -f "${out}/values/cert-manager.yaml" ]]; then
     if helm template cert-manager "${cert_manager_chart}" --namespace cert-manager \
@@ -220,14 +264,14 @@ if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
         fail "${name}: helmfile installs ${release} from ${actual}, BOM pins ${expected}"
       fi
     done <<'RELEASES'
-steward	.products.steward.chart	core task-auth
-cert-manager	.dependencies["cert-manager"].chart	core task-auth
-github-oidc-exchange	.products["github-oidc-exchange"].chart	task-auth
-envoy-gateway	.dependencies["envoy-gateway"].chart	task-auth
+steward	.products.steward.chart	core task-auth browser-admin
+cert-manager	.dependencies["cert-manager"].chart	core task-auth browser-admin
+github-oidc-exchange	.products["github-oidc-exchange"].chart	task-auth browser-admin
+envoy-gateway	.dependencies["envoy-gateway"].chart	task-auth browser-admin
 RELEASES
     # task-auth: the Gateway API and Envoy Gateway CRDs are the BOM manifests,
     # which a presync hook applies before the envoy-gateway release.
-    if [[ "${profile}" == task-auth ]]; then
+    if [[ "${profile}" == task-auth || "${profile}" == browser-admin ]]; then
       hook="$(yq -o=json -I=0 'select(.releases) | .releases[] | select(.name == "envoy-gateway") | .hooks[]
           | select((.events | contains(["presync"])) and .command == "../scripts/apply-manifests.sh") | .args' \
           "${work}/helmfile-${name}.yaml")"
@@ -284,6 +328,23 @@ reject "a public origin with a path" \
 reject "the evaluation Gateway in production" \
   '.purpose = "production" | .database.source = "operator" | .tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}}' \
   "does not match" kind-task-auth
+reject "browser login in the task-auth profile" \
+  '.browserAuth = {"google": {"clientId": "x", "workspaceDomain": "example.com", "organizationId": "org_x", "clientSecret": {"name": "s", "key": "k"}}}' \
+  "does not match" kind-task-auth
+reject "the browser-admin profile without browser login" \
+  'del(.browserAuth)' "does not match" kind-browser-admin
+reject "the browser-admin profile without browser-auth egress CIDRs" \
+  'del(.networkPolicy.egressCidrs)' "does not match" kind-browser-admin
+reject "a personal Google account domain" \
+  '.browserAuth.google.workspaceDomain = "gmail.com"' "does not match" kind-browser-admin
+reject "an organization ID outside Steward's rule" \
+  '.browserAuth.google.organizationId = "example"' "does not match" kind-browser-admin
+reject "unrestricted browser-auth egress in production" \
+  '.purpose = "production" | .database.source = "operator" | .tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}} | .edge.gateway.source = "operator"' \
+  "does not match" kind-browser-admin
+reject "a reserved egress CIDR list" \
+  '.networkPolicy.egressCidrs.githubApi = ["192.0.2.0/24"]' \
+  "networkPolicy.egressCidrs.githubApi is reserved for governed mode" kind-browser-admin
 reject "the evaluation Gateway without the evaluation Steward CA" \
   '.tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}}' \
   "edge.gateway.source evaluation needs" kind-task-auth

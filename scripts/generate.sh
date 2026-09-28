@@ -11,11 +11,11 @@
 #   values/cert-manager.yaml            when tls.certManager.install is true
 #   values/evaluation-ca.yaml           when the evaluation CA issuer is used
 #   values/postgresql-evaluation.yaml   when the evaluation database is used
-#   values/github-oidc-exchange.yaml    task-auth: github-oidc-exchange chart values
+#   values/github-oidc-exchange.yaml    task-auth, browser-admin: github-oidc-exchange chart values
 #   values/steward-edge.yaml            task-auth: Steward's task API routes (charts/steward-edge)
-#   values/envoy-gateway.yaml           task-auth, when edge.install is true
-#   values/edge-evaluation-ca.yaml      task-auth, when the evaluation Gateway is used
-#   values/evaluation-edge.yaml         task-auth, when the evaluation Gateway is used
+#   values/envoy-gateway.yaml           task-auth, browser-admin, when edge.install is true
+#   values/edge-evaluation-ca.yaml      task-auth, browser-admin, when the evaluation Gateway is used
+#   values/evaluation-edge.yaml         task-auth, browser-admin, when the evaluation Gateway is used
 #   flux/                               Flux OCIRepository and HelmRelease objects for
 #                                       the same install, for the core profile when no
 #                                       evaluation piece is used (examples/flux/core is
@@ -78,14 +78,16 @@ if [[ -n "${reserved}" ]]; then
   while IFS= read -r field; do
     echo "error: ${field} is reserved for governed mode" >&2
   done <<<"${reserved}"
-  fail "the v1 generator implements the core and task-auth profiles; governed mode is tracked in https://github.com/apelogic-ai/steward-platform/issues/3"
+  fail "the v1 generator implements the core, task-auth and browser-admin profiles; governed mode is tracked in https://github.com/apelogic-ai/steward-platform/issues/3"
 fi
 
 profile="$(jq -r .profile <<<"${values_json}")"
 members=('.products | index("steward")' '.dependencies | index("postgresql")' '.dependencies | index("cert-manager")')
 case "${profile}" in
   core) ;;
-  task-auth)
+  task-auth | browser-admin)
+    # browser-admin is task-auth plus Steward's web UI and browser login;
+    # Steward also takes steward-run's release coordinates.
     members+=('.products | index("github-oidc-exchange")' '.products | index("steward-run")')
     if jq -e '.edge.install' <<<"${values_json}" >/dev/null; then
       members+=('.dependencies | index("gateway-api-crds")' '.dependencies | index("envoy-gateway")')
