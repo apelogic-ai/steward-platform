@@ -3,7 +3,9 @@
 What you need before installing the platform. This page covers requirements
 that follow from combining the products. Each product's own installation guide
 remains the authority for its configuration; known gaps link to the product
-issue that tracks them.
+issue that tracks them. Read the
+[known security limitations](#known-security-limitations) before you grant
+administrator roles.
 
 ## Summary
 
@@ -156,3 +158,64 @@ inference proxy. You need an account and API key with that provider. Core mode
 makes no LLM calls. The governed end-to-end test planned in
 [#3](https://github.com/apelogic-ai/steward-platform/issues/3) will use a mock
 model so that CI needs no key.
+
+## Known security limitations
+
+Two properties of the current products affect how far you can trust an
+administrator grant and a browser session. Both apply to any install with
+browser login (the browser-admin profile, and governed use). Plan for them
+before you grant anyone a role.
+
+### No revocation path without the browser
+
+`bootstrap-rbac` only grants roles. Revoking a role needs the operator CLI
+(`steward rbac revoke`), and the administrator credential that the CLI needs
+cannot be obtained yet
+([apelogic-ai/steward#146](https://github.com/apelogic-ai/steward/issues/146)).
+Browser administration is the only other path, and it depends on Google
+sign-in, the web UI and its edge all working.
+
+- **Risk.** If the browser path is broken (sign-in fails, or the web UI or
+  its edge is down), you cannot revoke a grant short of deleting and
+  reinstalling Steward. Every grant is then a standing privilege.
+- **Interim mitigation.**
+  - Restrict who holds the administrator role to the fewest people who need
+    it, and grant member roles only when a user needs one.
+  - Check that you can sign in and administer in the browser before you
+    rely on it to take a grant away.
+  - Review the RBAC events in the audit trail regularly, so that an
+    unexpected grant is noticed
+    ([walkthrough, audit record](browser-admin/walkthrough.md#5-read-the-audit-record)).
+- **Tracking.** [apelogic-ai/steward#146](https://github.com/apelogic-ai/steward/issues/146).
+  See also [revoking](browser-admin/first-admin.md#revoking) in the
+  first-admin runbook.
+
+### Federated subject association needs a pasted session cookie
+
+To let a Task identity act for a user, an administrator associates its
+federated subject with that user's canonical ID. Steward has no page for
+this and no non-browser path, so the only way is to copy the browser session
+cookie into a shell and call the browser API with it
+([walkthrough](browser-admin/walkthrough.md#optional-link-a-task-identity-to-the-user-manual)).
+That cookie is a bearer credential: anyone who has it acts as that
+administrator until the session ends. With policy v6 this is not a one-off
+step. Every new caller identity needs its own association, so the cookie is
+copied again each time one is enrolled.
+
+- **Risk.** The administrator's session can leak through shell history,
+  terminal scrollback, logs, screen sharing or anything else that sees the
+  shell, and it can be replayed until it expires.
+- **Interim mitigation.**
+  - Sign in for the association only, keep the session short, and sign
+    out immediately afterwards.
+  - Keep the cookie out of shell history and out of any shared terminal,
+    file or chat, and clear it from the shell when you are done.
+  - Restrict who holds the administrator role, since each of them may need
+    to do this.
+  - After each association, review the subject's audit trail
+    (`GET /admin/api/v1/federated-subjects/<id>/audit`) and the audit
+    history for anything else done as that administrator.
+- **Tracking.** A non-browser operator path
+  ([apelogic-ai/steward#179](https://github.com/apelogic-ai/steward/issues/179))
+  and an admin UI page for association
+  ([apelogic-ai/steward#184](https://github.com/apelogic-ai/steward/issues/184)).
