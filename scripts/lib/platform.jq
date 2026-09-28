@@ -137,7 +137,7 @@ def evaluation_ca_values:
 def postgresql_evaluation_values($bom):
   . as $v
   | {
-      nameOverride: evaluation_postgres_name,
+      name: evaluation_postgres_name,
       image: ($bom.dependencies.postgresql.images.postgres | image_parts | {repository, tag, digest}),
       port: $v.database.port,
       clusterDomain: $v.cluster.domain,

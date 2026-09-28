@@ -51,10 +51,10 @@ jobs:
       - name: Install check-jsonschema
         run: pipx install check-jsonschema==0.38.2
       - name: Install tools
-        run: scripts/ci/install-tools.sh helm yq
+        run: scripts/ci/install-tools.sh helm helmfile yq
       - name: Validate the platform values schema
         run: check-jsonschema --check-metaschema schemas/platform-values/v1.schema.json
-      - name: Test the generator against the pinned charts
+      - name: Test the generator and helmfile against the pinned charts
         run: tests/generate/run.sh
 
   digests:

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: evaluation-ca
+description: >-
+  Evaluation only. A self-signed CA and a cert-manager CA Issuer in the release
+  namespace, for Steward's certManager TLS mode on a throwaway cluster.
+  Production uses the operator's own issuer.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.32.0-0"
+home: https://github.com/apelogic-ai/steward-platform
+annotations:
+  steward-platform/evaluation-only: "true"

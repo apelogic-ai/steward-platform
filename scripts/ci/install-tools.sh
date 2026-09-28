@@ -2,7 +2,7 @@
 # Install pinned CI tools into a directory and put it on the GitHub Actions PATH.
 # Each download is checked against a pinned SHA-256. Linux amd64 only.
 #
-# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, kind, kubectl, yq)
+# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, helmfile, kind, kubectl, yq)
 # Env:   TOOLS_DIR (default: ${RUNNER_TEMP}/tools/bin)
 set -euo pipefail
 
@@ -10,6 +10,8 @@ crane_version=v0.22.1
 crane_sha256=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
 helm_version=v3.22.0
 helm_sha256=1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb
+helmfile_version=v1.8.0
+helmfile_sha256=35d5d39fc608342b23fc7ce1dd0c3bf0c96cc07ec3796507ab6894a5d172bf20
 kind_version=v0.31.0
 kind_sha256=eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
 # Matches the highest tested Kubernetes minor in the BOM.
@@ -51,6 +53,12 @@ for tool in "$@"; do
         "${helm_sha256}" "${work}/helm.tar.gz"
       tar -xzf "${work}/helm.tar.gz" -C "${work}" linux-amd64/helm
       install -m 0755 "${work}/linux-amd64/helm" "${tools_dir}/helm"
+      ;;
+    helmfile)
+      fetch "https://github.com/helmfile/helmfile/releases/download/${helmfile_version}/helmfile_${helmfile_version#v}_linux_amd64.tar.gz" \
+        "${helmfile_sha256}" "${work}/helmfile.tar.gz"
+      tar -xzf "${work}/helmfile.tar.gz" -C "${work}" helmfile
+      install -m 0755 "${work}/helmfile" "${tools_dir}/helmfile"
       ;;
     kind)
       fetch "https://github.com/kubernetes-sigs/kind/releases/download/${kind_version}/kind-linux-amd64" \

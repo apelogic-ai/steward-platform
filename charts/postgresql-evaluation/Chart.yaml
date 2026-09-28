@@ -1,0 +1,12 @@
+apiVersion: v2
+name: postgresql-evaluation
+description: >-
+  Evaluation only. A single PostgreSQL pod for Steward on a throwaway cluster:
+  no persistence, no TLS, no backups. It also writes the Steward database
+  Secret. Production uses a separately operated PostgreSQL 16.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.32.0-0"
+home: https://github.com/apelogic-ai/steward-platform
+annotations:
+  steward-platform/evaluation-only: "true"

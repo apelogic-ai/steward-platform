@@ -1,0 +1,83 @@
+# Reference install of the Steward platform, core profile. See README.md in
+# this directory.
+#
+# Every input comes from scripts/generate.sh, which reads one platform values
+# file and the BOM. Generate first, then pick the matching environment:
+#
+#   scripts/generate.sh environments/kind/platform-values.yaml
+#   helmfile -f helmfile/helmfile.yaml.gotmpl -e kind sync
+#
+# To add an environment, add an entry below whose name matches the
+# `environment` field of its platform values file.
+environments:
+  kind:
+    values:
+      - ../generated/kind/helmfile.yaml
+  production:
+    values:
+      - ../generated/production/helmfile.yaml
+---
+{{- $generated := printf "../generated/%s/values" .Environment.Name }}
+{{- $releases := .Values.releases }}
+{{- $ns := .Values.namespaces }}
+
+helmDefaults:
+  wait: true
+  waitForJobs: true
+  timeout: 600
+  createNamespace: true
+
+releases:
+{{- if $releases.certManager.enabled }}
+  # cert-manager from the BOM, pinned by chart digest. Its CRDs are chart
+  # templates, so upgrades update them.
+  - name: cert-manager
+    namespace: {{ $ns.certManager }}
+    chart: {{ $releases.certManager.chart }}
+    values:
+      - {{ $generated }}/cert-manager.yaml
+{{- end }}
+
+{{- if $releases.evaluationCa.enabled }}
+  # Evaluation only: a self-signed CA Issuer for Steward's certificates.
+  - name: evaluation-ca
+    namespace: {{ $ns.steward }}
+    chart: ../charts/evaluation-ca
+    {{- if $releases.certManager.enabled }}
+    needs:
+      - {{ $ns.certManager }}/cert-manager
+    {{- end }}
+    values:
+      - {{ $generated }}/evaluation-ca.yaml
+{{- end }}
+
+{{- if $releases.postgresqlEvaluation.enabled }}
+  # Evaluation only: in-cluster PostgreSQL without persistence or TLS. It also
+  # writes the Steward database Secret.
+  - name: postgresql-evaluation
+    namespace: {{ $ns.steward }}
+    chart: ../charts/postgresql-evaluation
+    values:
+      - {{ $generated }}/postgresql-evaluation.yaml
+{{- end }}
+
+  # Steward from the BOM, pinned by chart digest (version {{ $releases.steward.version }}).
+  # Helm installs its CRD from the chart's crds/ directory on first install
+  # only; see README.md for upgrades.
+  - name: steward
+    namespace: {{ $ns.steward }}
+    chart: {{ $releases.steward.chart }}
+    {{- if or $releases.certManager.enabled $releases.evaluationCa.enabled $releases.postgresqlEvaluation.enabled }}
+    needs:
+      {{- if $releases.certManager.enabled }}
+      - {{ $ns.certManager }}/cert-manager
+      {{- end }}
+      {{- if $releases.evaluationCa.enabled }}
+      - {{ $ns.steward }}/evaluation-ca
+      {{- end }}
+      {{- if $releases.postgresqlEvaluation.enabled }}
+      - {{ $ns.steward }}/postgresql-evaluation
+      {{- end }}
+    {{- end }}
+    values:
+      - {{ $generated }}/steward.yaml

@@ -1,0 +1,5 @@
+# Name of the CA Issuer (and of its CA Certificate and Secret). Steward's
+# tls.issuerRef names it with kind Issuer.
+name: steward-platform-evaluation-ca
+# Lifetime of the CA certificate. cert-manager renews it before expiry.
+duration: 2160h

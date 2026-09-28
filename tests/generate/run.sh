@@ -9,8 +9,12 @@
 #   - the rendered Steward chart uses the BOM image digests.
 # Then check that the generator rejects inputs it must refuse.
 #
+# Also checks that helmfile/helmfile.yaml.gotmpl builds and renders every
+# committed environment with each BOM chart at its BOM digest (writes
+# generated/<environment>/; set SKIP_HELMFILE=1 to skip).
+#
 # Usage: tests/generate/run.sh
-# Needs: jq, yq (mikefarah v4), check-jsonschema, helm, openssl.
+# Needs: jq, yq (mikefarah v4), check-jsonschema, helm, helmfile, openssl.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -97,6 +101,19 @@ check_environment() {
         || fail "${name}: cert-manager ${component} does not render ${ref}"
     done
   fi
+
+  local chart
+  for chart in evaluation-ca postgresql-evaluation; do
+    [[ -f "${out}/values/${chart}.yaml" ]] || continue
+    if helm lint "${repo_root}/charts/${chart}" -f "${out}/values/${chart}.yaml" >"${work}/lint.log" 2>&1 \
+      && helm template "${chart}" "${repo_root}/charts/${chart}" --namespace "${namespace}" \
+        -f "${out}/values/${chart}.yaml" >/dev/null 2>"${work}/template.log"; then
+      pass "${name}: ${chart} values pass the chart"
+    else
+      cat "${work}/lint.log" "${work}/template.log" >&2
+      fail "${name}: ${chart} values rejected by the chart"
+    fi
+  done
 }
 
 for values in "${repo_root}"/environments/*/platform-values.yaml; do
@@ -115,6 +132,41 @@ if yq -e '.tls.webhook.caBundlePem | test("BEGIN CERTIFICATE")' \
   pass "customer-secret: the CA bundle file is embedded"
 else
   fail "customer-secret: the CA bundle file is not embedded"
+fi
+
+# The helmfile renders every committed environment, and installs each BOM
+# chart by its BOM digest.
+if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
+  command -v helmfile >/dev/null || { echo "missing helmfile (or set SKIP_HELMFILE=1)" >&2; exit 2; }
+  for values in "${repo_root}"/environments/*/platform-values.yaml; do
+    name="$(yq -r .environment "${values}")"
+    "${generate}" "${values}" >/dev/null
+    if ! helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
+      build > "${work}/helmfile-${name}.yaml" 2>"${work}/helmfile.log"; then
+      cat "${work}/helmfile.log" >&2
+      fail "${name}: helmfile build failed"
+      continue
+    fi
+    for pinned in '.products.steward.chart' '.dependencies["cert-manager"].chart'; do
+      expected="$(jq -r "${pinned} | \"\\(.reference)@\\(.digest)\"" "${bom}")"
+      release="$(jq -r "${pinned}.reference | split(\"/\") | last" "${bom}")"
+      actual="$(yq -r "select(.releases) | .releases[] | select(.name == \"${release}\") | .chart" "${work}/helmfile-${name}.yaml")"
+      if [[ -z "${actual}" ]]; then
+        continue
+      elif [[ "${actual}" == "${expected}" ]]; then
+        pass "${name}: helmfile installs ${release} at the BOM digest"
+      else
+        fail "${name}: helmfile installs ${release} from ${actual}, BOM pins ${expected}"
+      fi
+    done
+    if helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
+      template > "${work}/helmfile-template-${name}.yaml" 2>"${work}/helmfile.log"; then
+      pass "${name}: helmfile renders every release"
+    else
+      cat "${work}/helmfile.log" >&2
+      fail "${name}: helmfile template failed"
+    fi
+  done
 fi
 
 # Inputs the generator must refuse.
