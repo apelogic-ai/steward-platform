@@ -9,6 +9,7 @@ nothing runs in a sandbox, and Steward stays in its core mode.
 |---|---|
 | BOM profile | `task-auth` in [`bom/bom.json`](../../bom/bom.json) |
 | Reference install | [`environments/kind-task-auth`](../../environments/kind-task-auth/platform-values.yaml) through the [generator](../platform-values.md) and the [helmfile](../../helmfile/README.md) |
+| Flux | [`examples/flux/task-auth`](../../examples/flux/task-auth/README.md), generated from the production shape [`environments/production-task-auth`](../../environments/production-task-auth/platform-values.yaml) |
 | Test | [`tests/e2e/task-auth`](../../tests/e2e/task-auth/README.md), in CI on every tested Kubernetes version and nightly |
 | Tracking | [#7](https://github.com/apelogic-ai/steward-platform/issues/7) |
 
@@ -148,7 +149,24 @@ the exchange fetches GitHub's public JWKS over the internet.
   with its trust distribution, for example trust-manager), a port-forward in
   place of a load balancer, and in-cluster PostgreSQL.
 - **Key rotation**, and Steward reloading a changed JWKS.
-- **Flux**: the generator writes Flux output for the core profile only.
+- **A full Flux install.** CI checks the [Flux output](#flux) statically
+  against the helmfile and reconciles only its edge part with Flux
+  controllers; the end-to-end test installs through the helmfile.
+
+## Flux
+
+The generator writes Flux objects for task-auth when no evaluation piece is
+used, that is, for the production shape: the same releases, `dependsOn`
+order and values as the helmfile. The evaluation CA, database and Gateway
+are not emitted; the operator supplies their production equivalents (the
+issuer, the database, and the Gateway with `edge.gateway.source: operator`)
+and the exchange's policy, keyring and public JWKS, by reference. The Gateway
+API and Envoy Gateway CRDs that the helmfile applies from a hook are Flux
+`Kustomization`s over sources Flux pins (a Git commit, the Envoy Gateway
+chart digest), checked in CI to hold exactly the BOM manifests' objects, and
+`charts/steward-edge` comes from this repository at the platform version's
+tag. Details, operator inputs and upgrade steps:
+[`examples/flux/task-auth`](../../examples/flux/task-auth/README.md).
 
 ## Run it
 

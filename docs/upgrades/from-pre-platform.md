@@ -609,9 +609,6 @@ This repository:
 - [#14](https://github.com/apelogic-ai/steward-platform/issues/14): platform
   values cannot express a registry mirror; digest checks run against upstream
   only.
-- [#15](https://github.com/apelogic-ai/steward-platform/issues/15): the
-  generator writes Flux output for the core profile only; task-auth and
-  browser-admin values are helmfile-only.
 - [#16](https://github.com/apelogic-ai/steward-platform/issues/16):
   NetworkPolicy peers in the platform values are literal CIDRs only.
 - [#18](https://github.com/apelogic-ai/steward-platform/issues/18): no grant

@@ -74,7 +74,7 @@ digest, with every chart's values generated from one
   ```
 
   This is exactly what the core end-to-end test runs in CI, on an amd64 host.
-- **Flux**: [examples/flux/core](examples/flux/core/README.md), the same
+- **Flux**: [examples/flux](examples/flux/core/README.md) ([task-auth](examples/flux/task-auth/README.md), [browser-admin](examples/flux/browser-admin/README.md)), the same
   install as `OCIRepository` and `HelmRelease` objects, generated from the BOM.
 
 Upgrading products installed before this repository existed? Follow the

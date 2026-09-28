@@ -7,7 +7,9 @@ steps; where this page and a product guide disagree about that product's
 procedure, the product guide wins.
 
 The **core** sequence is implemented by the reference installs
-([helmfile](../helmfile/README.md), [Flux](../examples/flux/core/README.md))
+([helmfile](../helmfile/README.md), [Flux](../examples/flux/core/README.md);
+Flux for [task-auth](../examples/flux/task-auth/README.md) and
+[browser-admin](../examples/flux/browser-admin/README.md) too)
 and proven by the [core end-to-end test](../tests/e2e/core/README.md). The
 **governed** sequence is an outline until the governed reference install lands
 ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
@@ -103,7 +105,9 @@ implementation with BackendTLSPolicy support), the operator inputs of
 github-oidc-exchange (its policy ConfigMap and keyring Secret, and Steward's
 copy of its public JWKS), Steward's task identity settings, the edge routes,
 and github-oidc-exchange itself. The
-[helmfile](../helmfile/README.md) orders them with `needs`, and the
+[helmfile](../helmfile/README.md) orders them with `needs`, the
+[Flux output](../examples/flux/task-auth/README.md) with the same `dependsOn`
+(its CRDs through `Kustomization`s), and the
 [task-auth end-to-end test](../tests/e2e/task-auth/README.md) proves them
 with the steward-run action. It stops before Envelope admission: that needs
 a Steward canonical user, which only a browser login creates (step 5 of the

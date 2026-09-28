@@ -13,8 +13,11 @@ into per-chart values and helmfile inputs.
   (task-auth, evaluation on kind),
   [`environments/kind-browser-admin/platform-values.yaml`](../environments/kind-browser-admin/platform-values.yaml)
   (browser-admin, evaluation on kind) and
-  [`environments/production/platform-values.yaml`](../environments/production/platform-values.yaml)
-  (core, production shape)
+  [`environments/production/platform-values.yaml`](../environments/production/platform-values.yaml),
+  [`environments/production-task-auth/platform-values.yaml`](../environments/production-task-auth/platform-values.yaml)
+  and
+  [`environments/production-browser-admin/platform-values.yaml`](../environments/production-browser-admin/platform-values.yaml)
+  (core, task-auth and browser-admin, production shape)
 
 The generator sets only the chart keys listed below. Each product chart
 remains the authority for what its keys mean; follow the links.
@@ -39,7 +42,7 @@ writes `generated/<environment>/`:
 | `values/steward-edge.yaml` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API routes and BackendTLSPolicy (task-auth only; browser-admin uses Steward's own routes) |
 | `values/envoy-gateway.yaml` | Envoy Gateway, without its bundled CRDs (task-auth and browser-admin, when `edge.install` is true). The helmfile applies the BOM's CRD manifests first. |
 | `values/edge-evaluation-ca.yaml`, `values/evaluation-edge.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca) again, for the edge, and [`charts/evaluation-edge`](../charts/evaluation-edge): the evaluation Gateway (task-auth and browser-admin, when `edge.gateway.source` is `evaluation`) |
-| `flux/` | Flux `OCIRepository` and `HelmRelease` objects for the same install, for the core profile when no evaluation piece is used. [`examples/flux/core`](../examples/flux/core) is this output for the production example. Flux output for task-auth and browser-admin is not generated yet. |
+| `flux/` | Flux objects for the same install, when no evaluation piece is used: an `OCIRepository` pinned by digest and a `HelmRelease` per release, with the helmfile's order as `dependsOn`; for task-auth and browser-admin with `edge.install`, the Gateway API and Envoy Gateway CRDs as `Kustomization`s over their BOM `fluxSource`; for task-auth, `charts/steward-edge` from this repository at the platform version's tag. [`examples/flux/core`](../examples/flux/core/README.md), [`task-auth`](../examples/flux/task-auth/README.md) and [`browser-admin`](../examples/flux/browser-admin/README.md) are this output for the production examples. |
 
 The same inputs always give the same bytes. `generated/` is not committed;
 regenerate it after changing the values file or the BOM.

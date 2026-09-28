@@ -39,20 +39,29 @@ it is the same for Flux.
 An environment that uses the evaluation pieces (such as `kind`) gets no Flux
 output. Those are in-repo charts that only the helmfile installs.
 
+The task-auth and browser-admin profiles have their own examples,
+[`../task-auth`](../task-auth/README.md) and
+[`../browser-admin`](../browser-admin/README.md), which add the edge CRDs,
+Envoy Gateway, the Steward edge routes and github-oidc-exchange.
+
 ## What CI checks
 
 [`tests/flux/run.sh`](../../../tests/flux/run.sh):
 
 - the files match a fresh generation;
 - every object validates, strictly, against the Flux CRD schemas (kubeconform);
+- the `HelmRelease`s are the helmfile's releases for the same environment,
+  each `dependsOn` is that release's helmfile `needs`, and each carries
+  exactly the generated values the helmfile installs;
 - each `OCIRepository` points at its BOM chart and pins only its BOM digest,
   and each `HelmRelease` takes its chart from that `OCIRepository`;
 - each chart, pulled at that digest, renders with the `HelmRelease` values
   and uses the BOM image digests.
 
-CI does not install Flux. The values are the ones the helmfile installs, and
-the [core end-to-end test](../../../tests/e2e/core/README.md) proves those on
-a live cluster.
+CI does not reconcile this example with Flux controllers (it needs the
+operator's database and issuer). The values are the ones the helmfile
+installs, and the [core end-to-end test](../../../tests/e2e/core/README.md)
+proves those on a live cluster.
 
 ## Upgrades and the Steward CRD
 
