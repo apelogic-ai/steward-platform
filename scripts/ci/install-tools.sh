@@ -2,7 +2,7 @@
 # Install pinned CI tools into a directory and put it on the GitHub Actions PATH.
 # Each download is checked against a pinned SHA-256. Linux amd64 only.
 #
-# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, kind, kubectl)
+# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, kind, kubectl, yq)
 # Env:   TOOLS_DIR (default: ${RUNNER_TEMP}/tools/bin)
 set -euo pipefail
 
@@ -15,6 +15,8 @@ kind_sha256=eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
 # Matches the highest tested Kubernetes minor in the BOM.
 kubectl_version=v1.34.3
 kubectl_sha256=ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212
+yq_version=v4.53.6
+yq_sha256=c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385
 
 if [[ "$(uname -s)/$(uname -m)" != Linux/x86_64 ]]; then
   echo "install-tools.sh supports Linux x86_64 only" >&2
@@ -59,6 +61,11 @@ for tool in "$@"; do
       fetch "https://dl.k8s.io/release/${kubectl_version}/bin/linux/amd64/kubectl" \
         "${kubectl_sha256}" "${work}/kubectl"
       install -m 0755 "${work}/kubectl" "${tools_dir}/kubectl"
+      ;;
+    yq)
+      fetch "https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_amd64" \
+        "${yq_sha256}" "${work}/yq"
+      install -m 0755 "${work}/yq" "${tools_dir}/yq"
       ;;
     *)
       echo "unknown tool ${tool}" >&2

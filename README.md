@@ -69,7 +69,7 @@ defined by [`schemas/bom/v1.schema.json`](schemas/bom/v1.schema.json).
 | `platformVersion` | Calendar version of this combination, for example `2026.10.0`. Pre-releases carry `-alpha.N`, `-beta.N` or `-rc.N`. |
 | `kubernetes` | Supported minor range (`minVersion`–`maxVersion`) and the exact versions and kind node images the end-to-end tests run on. |
 | `products.<name>` | One product release: `version`, `source` repository, release `commit`, the `chart` (OCI reference, version, digest), `images` by component, the `provenance` (attestation signer and attested artifacts), and `minPeers` (minimum peer versions the product declares). |
-| `dependencies.<name>` | One external dependency: upstream `version` and `source`, pinned `images`, `chart` or `manifests`, `usage` (`required` or `evaluation-only`), and the profiles it is `requiredFor`. |
+| `dependencies.<name>` | One external dependency: upstream `version` and `source`, pinned `images`, `chart` or `manifests`, `usage` (`required`, `reference-install` or `evaluation-only`), and the profiles it is `requiredFor`. |
 | `profiles.<name>` | Which products and dependencies an install profile includes. |
 
 Install from the digests, not the tags. Tags are there for readers; the digest
@@ -80,7 +80,9 @@ image is the full `registry/repository:tag@sha256:...` string under
 
 An `evaluation-only` dependency is used by tests and evaluation installs.
 Production installs bring their own equivalent, for example a managed
-PostgreSQL 16.
+PostgreSQL 16. A `reference-install` dependency, such as cert-manager, is
+installed by the reference installs in every environment; an operator who
+already runs it can keep their own.
 
 CI validates the BOM, checks that every digest resolves anonymously, and
 verifies the product attestations. See [docs/verification.md](docs/verification.md).
@@ -88,8 +90,8 @@ verifies the product attestations. See [docs/verification.md](docs/verification.
 ## Status
 
 Pre-release. The first BOM (`2026.10.0-alpha.1`) pins the core profile only:
-Steward 0.3.0 and PostgreSQL 16 for evaluation. There are no platform releases
-yet.
+Steward 0.3.0, cert-manager for service TLS, and PostgreSQL 16 for evaluation.
+There are no platform releases yet.
 
 ## Contributing and security
 

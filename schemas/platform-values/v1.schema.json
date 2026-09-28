@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/apelogic-ai/steward-platform/main/schemas/platform-values/v1.schema.json",
+  "title": "Steward platform values, v1",
+  "description": "The one operator input for a platform install. It holds the values that several charts must agree on: namespaces, service account identities, cluster addresses, TLS, the database, public origins, audiences and the SPIFFE trust domain. scripts/generate.sh combines it with bom/bom.json into per-chart values and helmfile inputs. Fields marked x-reserved belong to governed mode; they are part of the design so that the file does not change shape later, but the v1 generator rejects them until governed mode lands.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "environment", "purpose", "profile", "cluster", "namespaces", "tls", "database"],
+  "properties": {
+    "$schema": {
+      "description": "Optional pointer to this schema, for editors.",
+      "type": "string"
+    },
+    "apiVersion": { "const": "steward-platform/v1" },
+    "kind": { "const": "PlatformValues" },
+    "environment": {
+      "description": "Environment name. It selects the helmfile environment and the output directory helmfile/generated/<environment>.",
+      "$ref": "#/$defs/dnsLabel"
+    },
+    "purpose": {
+      "description": "evaluation allows the evaluation-only pieces (in-cluster PostgreSQL, a self-signed CA). production forbids them: the operator supplies the database and the certificate issuer.",
+      "enum": ["evaluation", "production"]
+    },
+    "profile": {
+      "description": "Install profile from the BOM. The v1 generator implements core only.",
+      "enum": ["core", "governed"]
+    },
+    "cluster": {
+      "description": "Facts about the target cluster that chart values depend on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "serviceAccountTokenAudience", "dnsNamespace", "kubeApi"],
+      "properties": {
+        "domain": {
+          "description": "Cluster DNS domain. Service certificates and in-cluster URLs use it.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "serviceAccountTokenAudience": {
+          "description": "Audience that this cluster's service account tokens carry, usually the service account issuer (kubectl get --raw /.well-known/openid-configuration). Steward's TokenReview must use it. It differs between distributions; on kind it is https://kubernetes.default.svc.cluster.local.",
+          "type": "string",
+          "minLength": 1
+        },
+        "dnsNamespace": {
+          "description": "Namespace of the cluster DNS pods. NetworkPolicy allows DNS egress to it.",
+          "$ref": "#/$defs/dnsLabel"
+        },
+        "kubeApi": {
+          "description": "How NetworkPolicy reaches the Kubernetes API. Charts take literal CIDRs only. Which address and port your CNI matches (service IP and 443, or endpoint IPs and 6443) depends on the CNI; see docs/prerequisites.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cidrs", "port"],
+          "properties": {
+            "cidrs": { "$ref": "#/$defs/cidrs" },
+            "port": { "$ref": "#/$defs/port" }
+          }
+        }
+      }
+    },
+    "namespaces": {
+      "description": "Namespaces of every platform component. Other charts refer to these in NetworkPolicy, service URLs and workload identities, so they are set once here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steward", "certManager"],
+      "properties": {
+        "steward": {
+          "description": "Steward control plane. Evaluation PostgreSQL and the evaluation CA also go here.",
+          "$ref": "#/$defs/dnsLabel"
+        },
+        "certManager": {
+          "description": "cert-manager, when the reference install installs it.",
+          "$ref": "#/$defs/dnsLabel"
+        },
+        "identityExchange": { "$ref": "#/$defs/reservedDnsLabel", "description": "github-oidc-exchange. Reserved for governed mode." },
+        "mcpGateway": { "$ref": "#/$defs/reservedDnsLabel", "description": "mcp-gw. Reserved for governed mode." },
+        "runners": { "$ref": "#/$defs/reservedDnsLabel", "description": "steward-run runner scale set. Reserved for governed mode." },
+        "litellm": { "$ref": "#/$defs/reservedDnsLabel", "description": "Inference proxy. Reserved for governed mode." },
+        "openshell": { "$ref": "#/$defs/reservedDnsLabel", "description": "Sandbox gateway. Reserved for governed mode." },
+        "spire": { "$ref": "#/$defs/reservedDnsLabel", "description": "SPIRE server and agents. Reserved for governed mode." },
+        "runtimes": {
+          "description": "Namespaces where agent runtimes run (PodSecurity privileged). Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/dnsLabel" }
+        }
+      }
+    },
+    "serviceAccounts": {
+      "description": "Workload identities. Service account names are fixed by the product charts; annotations (for example cloud workload identity) are set here so that the identities other components trust are defined in one place.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steward": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiserver": { "$ref": "#/$defs/serviceAccount" },
+            "controller": { "$ref": "#/$defs/serviceAccount" },
+            "mint": {
+              "description": "Reserved for governed mode.",
+              "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+              "$ref": "#/$defs/serviceAccount"
+            }
+          }
+        },
+        "identityExchange": {
+          "description": "Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "$ref": "#/$defs/serviceAccount"
+        },
+        "mcpGateway": {
+          "description": "Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "$ref": "#/$defs/serviceAccount"
+        }
+      }
+    },
+    "tls": {
+      "description": "How Steward's API and webhook get their service certificates, and how the webhook CA bundle is supplied.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "description": "certManager: cert-manager issues both certificates and injects the webhook CA bundle. customerSecret: the operator creates both TLS Secrets and supplies the public CA bundle.",
+          "enum": ["certManager", "customerSecret"]
+        },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["install", "issuer"],
+          "properties": {
+            "install": {
+              "description": "Install the BOM-pinned cert-manager. Set false when the cluster already runs cert-manager.",
+              "type": "boolean"
+            },
+            "issuer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source"],
+              "properties": {
+                "source": {
+                  "description": "evaluation: the reference install creates a self-signed CA Issuer in the Steward namespace (evaluation purpose only). operator: use the operator's existing Issuer or ClusterIssuer named in ref.",
+                  "enum": ["evaluation", "operator"]
+                },
+                "ref": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name", "kind"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "kind": {
+                      "description": "An Issuer must be in the Steward namespace.",
+                      "enum": ["Issuer", "ClusterIssuer"]
+                    }
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": { "properties": { "source": { "const": "operator" } } },
+                  "then": { "required": ["ref"] },
+                  "else": { "not": { "required": ["ref"] } }
+                }
+              ]
+            }
+          }
+        },
+        "customerSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caBundleFile"],
+          "properties": {
+            "apiSecretName": {
+              "description": "kubernetes.io/tls Secret for the API. Defaults to the chart's name.",
+              "$ref": "#/$defs/dnsSubdomain"
+            },
+            "webhookSecretName": {
+              "description": "kubernetes.io/tls Secret for the webhook. Defaults to the chart's name.",
+              "$ref": "#/$defs/dnsSubdomain"
+            },
+            "caBundleFile": {
+              "description": "Path to the public PEM CA bundle that verifies the webhook certificate, relative to this file. Never a private key.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "certManager" } } },
+          "then": { "required": ["certManager"], "not": { "required": ["customerSecret"] } }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "customerSecret" } } },
+          "then": { "required": ["customerSecret"], "not": { "required": ["certManager"] } }
+        }
+      ]
+    },
+    "database": {
+      "description": "Steward's PostgreSQL database.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "secret", "cidrs", "port"],
+      "properties": {
+        "source": {
+          "description": "evaluation: the reference install runs the BOM-pinned PostgreSQL in the Steward namespace, without TLS or persistence, and writes the database Secret (evaluation purpose only). operator: a separately operated PostgreSQL 16; the operator creates the database Secret.",
+          "enum": ["evaluation", "operator"]
+        },
+        "secret": {
+          "description": "Secret in the Steward namespace whose key holds the database URL.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "$ref": "#/$defs/dnsSubdomain" },
+            "key": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+          }
+        },
+        "cidrs": {
+          "description": "Literal CIDRs of the database for NetworkPolicy egress. For evaluation on kind, the pod subnet.",
+          "$ref": "#/$defs/cidrs"
+        },
+        "port": { "$ref": "#/$defs/port" },
+        "tls": {
+          "description": "Database TLS. verify-full also needs the URL in the Secret to use sslmode=verify-full&sslrootcert=/run/database-tls/ca.crt.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": { "enum": ["disabled", "verify-full"] },
+            "ca": {
+              "description": "Public CA that verifies the database server, in the Steward namespace.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "name", "key"],
+              "properties": {
+                "kind": { "enum": ["ConfigMap", "Secret"] },
+                "name": { "$ref": "#/$defs/dnsSubdomain" },
+                "key": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "mode": { "const": "verify-full" } } },
+              "then": { "required": ["ca"] },
+              "else": { "not": { "required": ["ca"] } }
+            }
+          ]
+        }
+      }
+    },
+    "networkPolicy": {
+      "description": "Cross-component NetworkPolicy inputs. Charts keep their NetworkPolicies on; these values open only what the platform needs.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiserverIngressNamespaces": {
+          "description": "Namespaces whose pods may call the Steward API directly.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/dnsLabel" }
+        },
+        "edgeNamespace": {
+          "description": "Namespace of the ingress or Gateway implementation that fronts the Steward browser UI and API. Reserved for governed mode.",
+          "$ref": "#/$defs/reservedDnsLabel"
+        },
+        "egressCidrs": {
+          "description": "Literal CIDRs for external peers. Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "browserAuth": { "$ref": "#/$defs/cidrs", "description": "Google sign-in endpoints." },
+            "githubApi": { "$ref": "#/$defs/cidrs", "description": "GitHub API, for GitHub source retrieval and runners." },
+            "identityIssuer": { "$ref": "#/$defs/cidrs", "description": "github-oidc-exchange public issuer, when it is outside the cluster." }
+          }
+        }
+      }
+    },
+    "publicEndpoints": {
+      "description": "Public HTTPS origins and issuer URLs. Several charts must carry the exact same string, so each is set once here. Reserved for governed mode.",
+      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steward": {
+          "description": "Steward browser and API origin: Steward's browser origin, web host and task-token resource; the steward-run API URL.",
+          "$ref": "#/$defs/httpsOrigin"
+        },
+        "identityIssuer": {
+          "description": "github-oidc-exchange issuer: its own issuer setting, Steward's taskIdentity.issuer, and the steward-run workflow input.",
+          "$ref": "#/$defs/httpsOrigin"
+        },
+        "mintIssuer": {
+          "description": "Steward Mint token issuer, which mcp-gw and the inference proxy trust.",
+          "$ref": "#/$defs/httpsOrigin"
+        },
+        "mcpGateway": {
+          "description": "mcp-gw origin: Steward's MCP gateway endpoint and connections origin.",
+          "$ref": "#/$defs/httpsOrigin"
+        }
+      }
+    },
+    "audiences": {
+      "description": "Token audiences that an issuer and its verifiers must agree on. Reserved for governed mode.",
+      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "taskApi": { "type": "string", "minLength": 1, "description": "Task tokens issued by github-oidc-exchange and accepted by Steward." },
+        "mint": { "type": "string", "minLength": 1, "description": "Mint tokens accepted by mcp-gw and the inference proxy." },
+        "mintSvid": { "type": "string", "minLength": 1, "description": "SPIFFE SVIDs presented to Mint." },
+        "mintControlPlane": { "type": "string", "minLength": 1, "description": "Steward control-plane tokens presented to Mint." }
+      }
+    },
+    "spiffe": {
+      "description": "Workload identity. Reserved for governed mode.",
+      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trustDomain"],
+      "properties": {
+        "trustDomain": {
+          "description": "SPIFFE trust domain shared by SPIRE, Steward Mint and github-oidc-exchange workload exchange.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$"
+        }
+      }
+    },
+    "browserAuth": {
+      "description": "Browser login for Steward. Needs publicEndpoints.steward and an HTTPS edge. Reserved for governed mode.",
+      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["google"],
+      "properties": {
+        "google": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["clientId", "workspaceDomain", "organizationId", "clientSecret"],
+          "properties": {
+            "clientId": { "type": "string", "minLength": 1 },
+            "workspaceDomain": { "type": "string", "minLength": 1 },
+            "organizationId": {
+              "description": "Steward organization ID. It must start with org_; the Steward chart schema does not check this yet (apelogic-ai/steward#137) and the apiserver fails at startup otherwise.",
+              "type": "string",
+              "pattern": "^org_[A-Za-z0-9_-]+$"
+            },
+            "clientSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "key"],
+              "properties": {
+                "name": { "$ref": "#/$defs/dnsSubdomain" },
+                "key": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "Production never uses the evaluation pieces.",
+      "if": { "properties": { "purpose": { "const": "production" } } },
+      "then": {
+        "properties": {
+          "database": { "properties": { "source": { "const": "operator" } } },
+          "tls": {
+            "properties": {
+              "certManager": { "properties": { "issuer": { "properties": { "source": { "const": "operator" } } } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "dnsLabel": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "maxLength": 63
+    },
+    "reservedDnsLabel": {
+      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "$ref": "#/$defs/dnsLabel"
+    },
+    "dnsSubdomain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "maxLength": 253
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "cidr": {
+      "description": "Literal IPv4 or IPv6 CIDR.",
+      "type": "string",
+      "anyOf": [
+        { "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/(3[0-2]|[12]?[0-9])$" },
+        { "pattern": "^[0-9a-fA-F:]+:[0-9a-fA-F:.]*/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$" }
+      ]
+    },
+    "cidrs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/cidr" }
+    },
+    "httpsOrigin": {
+      "description": "Exact HTTPS origin or issuer URL, without a trailing slash.",
+      "type": "string",
+      "pattern": "^https://[^/?#\\s]+(/[^?#\\s]*[^/?#\\s])?$"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}
