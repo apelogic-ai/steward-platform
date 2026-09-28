@@ -7,9 +7,9 @@ host.
 
 | Check | Script | What it proves |
 |---|---|---|
-| Schema and cross-references | [`scripts/validate-bom.sh`](../scripts/validate-bom.sh) | The BOM matches [`schemas/bom/v1.schema.json`](../schemas/bom/v1.schema.json). Profiles reference only pinned entries, `requiredFor` matches the profiles, attestation subjects exist, declared minimum peer versions hold, and the tested Kubernetes versions cover both ends of the supported range. |
+| Schema and cross-references | [`scripts/validate-bom.sh`](../scripts/validate-bom.sh) | The BOM matches [`schemas/bom/v1.schema.json`](../schemas/bom/v1.schema.json). Profiles reference only pinned entries, every product is either in a profile or `plannedFor` a profile the BOM does not define yet (never both), `requiredFor` matches the profiles, attestation subjects exist, declared minimum peer versions hold, and the tested Kubernetes versions cover both ends of the supported range. |
 | Digests | [`scripts/verify-digests.sh`](../scripts/verify-digests.sh) | Every chart, image, node image and manifest pinned in the BOM resolves anonymously at its digest. A product tag that moved away from the pinned digest fails. A dependency or node image tag that moved only warns, because those upstreams rebuild tags; the pinned digest is still what gets installed. |
-| Attestations | [`scripts/verify-attestations.sh`](../scripts/verify-attestations.sh) | Each artifact listed in `products.<name>.provenance.subjects` has a GitHub artifact attestation with the declared predicate type, signed by the declared workflow at the declared tag, built on a GitHub-hosted runner, from the product repository at the pinned commit. |
+| Attestations | [`scripts/verify-attestations.sh`](../scripts/verify-attestations.sh) | For products that publish GitHub artifact attestations (Steward and mcp-gw): each artifact listed in `products.<name>.provenance.subjects` has a GitHub artifact attestation with the declared predicate type, signed by the declared workflow at the declared tag, built on a GitHub-hosted runner, from the product repository at the pinned commit. |
 | Signatures | [`scripts/verify-signatures.sh`](../scripts/verify-signatures.sh) | For products that sign with cosign instead of GitHub artifact attestations (github-oidc-exchange and steward-run): the release tag is the pinned commit; the release manifest verifies against its Sigstore bundle, signed by the declared workflow at the pinned commit; the signed manifest names the pinned version, commit, every pinned digest and, for steward-run, the pinned action commit, and carries exactly the pinned `workflow` repository and commit and `schemaVersion`, so that Steward's `stewardRunRelease` projection from the BOM equals the signed manifest field for field; and each listed chart and image bundle verifies for its pinned digest. |
 | Generator and helmfile | [`tests/generate/run.sh`](../tests/generate/run.sh) | Every `environments/*/platform-values.yaml`, plus a customer-supplied-TLS variant, generates deterministically, and the generated values pass `helm lint` and `helm template` with the BOM-pinned charts pulled by digest, so each chart's own values schema applies. The [helmfile](../helmfile/README.md) builds and renders every committed environment and installs each BOM chart at its BOM digest. The generator refuses reserved governed fields, the governed profile, evaluation pieces in production, browser login outside the browser-admin profile, a personal Google domain, unrestricted browser-auth egress in production, and a CA bundle that contains a private key. For browser-admin it checks the rendered browser login, web image, steward-run release projection and Steward's routes. See [platform values](platform-values.md). |
 | Flux example | [`tests/flux/run.sh`](../tests/flux/run.sh) | [`examples/flux/core`](../examples/flux/core) matches a fresh generation from the BOM, validates strictly against the pinned Flux CRD schemas, pins each BOM chart by its BOM digest, and renders with the BOM image digests. |
@@ -24,10 +24,10 @@ need no credentials. The signature check needs
 checksum in [`scripts/ci/install-tools.sh`](../scripts/ci/install-tools.sh))
 and network access to the public Sigstore trust root.
 
-## Attestation coverage: Steward 0.3.1
+## Attestation coverage: Steward 0.3.2
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.1:
+from `.github/workflows/release.yml` at the release tag. For 0.3.2:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -45,7 +45,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.1.tgz` (install the attested
+- the chart archive release asset `steward-0.3.2.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);
@@ -56,7 +56,25 @@ Not attested upstream, so CI does not verify them:
 Steward images and the chart carry only provenance attestations; there are no
 SBOM attestations on the registry artifacts.
 
-## Signature coverage: github-oidc-exchange 0.7.1 and steward-run 0.7.1
+## Attestation coverage: mcp-gw 0.5.0
+
+mcp-gw publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
+from `.github/workflows/release.yml` at the release tag `v0.5.0`, built on
+GitHub-hosted runners. CI verifies all four BOM artifacts: the OCI chart
+`oci://ghcr.io/apelogic-ai/charts/mcp-gateway` and the `agentgateway`,
+`github-wrapper` and `google-workspace` images.
+
+mcp-gw is in the BOM with `plannedFor: ["governed"]`: pinned and verified, but
+no profile installs it and no end-to-end test exercises it until the governed
+profile exists ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
+Its chart also references the upstream GitHub MCP Server image, which the
+release leaves to the operator to pin; the BOM does not pin it.
+
+Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files,
+which are release assets rather than attestations, and the chart archive
+release asset `mcp-gateway-0.5.0.tgz` (install the attested OCI chart instead).
+
+## Signature coverage: github-oidc-exchange 0.7.2 and steward-run 0.7.2
 
 Neither product publishes GitHub artifact attestations for these releases
 (`gh attestation verify` finds none). Both attach cosign Sigstore bundles to

@@ -3,7 +3,8 @@
 # artifacts. For every subject in products.<name>.provenance, require an
 # attestation signed by the declared workflow at the declared tag, built on a
 # GitHub-hosted runner, from the product's source repository at the pinned
-# commit. Artifacts a product does not attest are reported, not failed;
+# commit. Products pinned only for a planned profile (plannedFor) are verified
+# the same way. Artifacts a product does not attest are reported, not failed;
 # artifacts signed with cosign bundles are verified by verify-signatures.sh.
 #
 # Usage: scripts/verify-attestations.sh [path/to/bom.json]

@@ -57,7 +57,7 @@ the Steward namespace:
 
 - **PostgreSQL 16** and the Secret holding its URL, plus its CA for
   `verify-full`. Steward's
-  [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md)
+  [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)
   lists the required database role.
 - **A certificate issuer** that your PKI approves (cert-manager mode), or the
   two TLS Secrets and the public CA bundle (customer-Secret mode).
@@ -85,12 +85,12 @@ In this order; the helmfile's `needs` and the Flux `dependsOn` enforce it.
 Then check the install the way the end-to-end test does: pods run the BOM
 digests, migrations applied, both certificates ready, the webhook denies an
 invalid `AgentRuntime`, and the API answers over verified TLS. Steward's
-[post-install checks](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md#post-install-and-delivery-tests)
+[post-install checks](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md#post-install-and-delivery-tests)
 cover the rest.
 
 Helm creates no Steward users, grants, templates or Envelopes. Administration
 after install is Steward's:
-[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
+[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
 
 ## 6. Task authentication (task-auth profile)
 
@@ -157,23 +157,23 @@ and enrolling it late.
    above).
 2. **github-oidc-exchange, not yet enrolled.** Install it so that its issuer
    URL and public JWKS exist; later steps need both. Its
-   [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/installation.md)
-   and [consumer contract](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/consumer-contract-v1.md)
+   [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/installation.md)
+   and [consumer contract](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/consumer-contract-v1.md)
    own the details.
 3. **steward-run**: runner controller, runner scale set and the pinned
    reusable workflow
-   ([installation](https://github.com/apelogic-ai/steward-run/blob/v0.7.1/docs/installation.md)).
+   ([installation](https://github.com/apelogic-ai/steward-run/blob/v0.7.2/docs/installation.md)).
    Governed jobs fail authentication until step 6; one such run shows the real
    GitHub claims that step 6 enrolls.
 4. **Wire Steward to the exchange**: Steward's task identity settings take the
    exchange's issuer, audience and public JWKS
-   ([Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md)).
+   ([Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)).
 5. **Provision authority in Steward**: the user signs in once, an
    administrator grants roles, authors Envelope templates and approves the
    user's Envelope. Record the user's canonical ID.
 6. **Enroll the exchange policy** with the observed claims and that canonical
    ID
-   ([integration](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/integration.md)).
+   ([integration](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/integration.md)).
 7. **Accept in core mode**: one submission is authenticated and admitted
    against the Envelope without running anything; wrong audience, issuer,
    repository, ref or actor each fail closed.
@@ -190,6 +190,6 @@ paths) get one page each in #3, linking the product-owned contracts.
 ## Where this came from
 
 This page supersedes Steward's
-[platform deployment order](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/platform-deployment-order.md)
+[platform deployment order](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/platform-deployment-order.md)
 for the cross-product sequence. Steward will link here
 ([apelogic-ai/steward#140](https://github.com/apelogic-ai/steward/issues/140)).

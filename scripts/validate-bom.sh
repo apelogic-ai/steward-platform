@@ -33,10 +33,19 @@ errors="$(jq -r '
         | select($bom.dependencies[.] == null)
         | "profile \($p) lists dependency \(.) that is not in dependencies"),
 
-      # Every product and dependency belongs to at least one profile.
-      ($bom.products | keys[] as $name
-        | select([$profiles[].value.products[]] | index($name) | not)
-        | "product \($name) is not in any profile"),
+      # Every product belongs to at least one profile, or is pinned for a
+      # profile that is not implemented yet (plannedFor): never both, and
+      # never for a profile the BOM already defines.
+      ($bom.products | to_entries[] | .key as $name | .value as $p
+        | ([$profiles[] | select(.value.products | index($name)) | .key]) as $listed
+        | (
+            (select(($listed | length) == 0 and $p.plannedFor == null)
+              | "product \($name) is not in any profile and has no plannedFor"),
+            (select(($listed | length) > 0 and $p.plannedFor != null)
+              | "product \($name) is in profiles \($listed) and also has plannedFor \($p.plannedFor)"),
+            ($p.plannedFor // [] | .[] | select($bom.profiles[.] != null)
+              | "product \($name): plannedFor profile \(.) is defined; list the product in it instead")
+          )),
 
       # requiredFor must match the profiles that list the dependency.
       ($bom.dependencies | to_entries[] | .key as $name
@@ -101,4 +110,6 @@ if [[ -n "${errors}" ]]; then
   printf 'error: %s\n' "${errors}" >&2
   exit 1
 fi
+jq -r '.products | to_entries[] | select(.value.plannedFor != null)
+  | "info: product \(.key) is pinned for \(.value.plannedFor | join(", ")), which this BOM does not implement: its artifacts are verified, but no profile installs it and no end-to-end test exercises it"' "${bom}"
 echo "ok: $(jq -r .platformVersion "${bom}")"

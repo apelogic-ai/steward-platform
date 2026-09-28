@@ -85,8 +85,8 @@ each one comes from.
 - The `AgentRuntime` CRD is installed from the chart's `crds/` directory.
 - Browser login, governed execution, Mint, the web UI and the connections
   bridge stay off. If you enable browser login, `browserAuth.google.organizationId`
-  must match `^org_[a-z0-9_-]{0,60}$`, which the Steward chart schema enforces
-  from 0.3.1.
+  must match `^org_[a-z0-9_-]{1,60}$`, which the Steward 0.3.2 chart schema
+  enforces.
 
 The assertions are ported from Steward's own
 [`scripts/customer-core-install-e2e.sh`](https://github.com/apelogic-ai/steward/blob/v0.3.0/scripts/customer-core-install-e2e.sh)

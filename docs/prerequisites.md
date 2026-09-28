@@ -21,8 +21,10 @@ issue that tracks them.
 The **core** profile is Steward alone (API, admission webhook and
 controller), with cert-manager issuing its service certificates.
 The **governed** profile adds steward-run, github-oidc-exchange, mcp-gw and
-their external dependencies. Only core is in the BOM today; governed is tracked
-in [#3](https://github.com/apelogic-ai/steward-platform/issues/3).
+their external dependencies. The BOM implements core, task-auth and
+browser-admin today. Governed is tracked in
+[#3](https://github.com/apelogic-ai/steward-platform/issues/3); mcp-gw is
+already pinned for it (`plannedFor`), but nothing installs it yet.
 
 ## amd64 nodes
 
@@ -37,19 +39,37 @@ cluster needs its own node placement.
 
 ## Kubernetes version
 
-The platform window is **1.32 to 1.34**, for core and governed alike.
+The platform window is the set of versions the end-to-end tests run on:
+**1.32 to 1.34**, for core and governed alike. Two kinds of boundary apply,
+and they are not the same thing:
 
-- **Floor, 1.32.** The platform supports and tests nothing older. Some product
-  charts still declare an older `kubeVersion` floor, so Helm does not stop an
-  install on an older cluster; do not rely on that. Tracked in
-  [apelogic-ai/steward#177](https://github.com/apelogic-ai/steward/issues/177)
-  and
-  [apelogic-ai/github-oidc-exchange#73](https://github.com/apelogic-ai/github-oidc-exchange/issues/73).
-- **Ceiling, 1.34.** The steward-run runner chart rejects 1.35 and later, so
-  the full platform cannot install on 1.35+. Known gap:
-  [apelogic-ai/steward-run#62](https://github.com/apelogic-ai/steward-run/issues/62).
-- Exact tested versions are in `kubernetes.tested` in
-  [bom/bom.json](../bom/bom.json). CI runs the core end-to-end test on each.
+- **Tested boundary, 1.32 to 1.34.** CI runs the core, task-auth and
+  browser-admin end-to-end tests on every version in `kubernetes.tested` in
+  [bom/bom.json](../bom/bom.json): 1.32, 1.33 and 1.34, each at an exact
+  patch release and kind node image. Versions above 1.34 are **untested** by
+  this BOM; they are not blocked by any product chart.
+- **Chart constraints.** Every product chart in the BOM declares a
+  `kubeVersion` floor of 1.32 (Steward from 0.3.2, github-oidc-exchange from
+  0.7.1, steward-run 0.7.2 and mcp-gw 0.5.0), so Helm refuses an older
+  cluster
+  ([apelogic-ai/steward#177](https://github.com/apelogic-ai/steward/issues/177),
+  [apelogic-ai/github-oidc-exchange#73](https://github.com/apelogic-ai/github-oidc-exchange/issues/73)).
+  Only the steward-run runner chart declares a ceiling: 0.7.2 accepts
+  `<1.37.0-0`
+  ([apelogic-ai/steward-run#62](https://github.com/apelogic-ai/steward-run/issues/62)),
+  so a platform that includes the runner (governed) cannot install on 1.37 or
+  later. The Steward, github-oidc-exchange and mcp-gw charts have no ceiling.
+- **Why not 1.35 and 1.36 yet.** On the kind v0.33.0 node images for 1.35.8
+  and 1.36.4 (kind v0.31.0, which CI uses, has no 1.36 image), kind's CNI
+  evaluates NetworkPolicy after the Kubernetes Service address is translated
+  to the API server endpoint, port 6443. github-oidc-exchange's NetworkPolicy allows egress on TCP 443
+  only and has no setting for the API server port, so its Lease replay ledger
+  cannot reach the API server and every exchange fails with
+  `ledger_unavailable`. The core and browser-admin tests pass on those
+  images; task-auth does not. This is not specific to those Kubernetes
+  versions: any CNI that evaluates egress after that translation, with an API
+  server on a port other than 443, has the same failure
+  ([apelogic-ai/github-oidc-exchange#58](https://github.com/apelogic-ai/github-oidc-exchange/issues/58)).
 
 ## NetworkPolicy
 
@@ -88,7 +108,7 @@ Steward needs a separately operated PostgreSQL database; PostgreSQL 16 is the
 tested line. The chart does not create one. The BOM's `postgresql` entry is for
 evaluation and tests only: the kind reference install runs it in the cluster,
 without persistence or TLS. See the
-[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md)
+[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)
 for the required database role.
 
 ## Google Workspace
@@ -100,8 +120,8 @@ the browser.
 
 - Steward's `browserAuth.google.organizationId` is a Steward-chosen name, not
   a Google organization ID: `org_` followed by up to 60 lowercase letters,
-  digits, `_` or `-`. The Steward 0.3.1 chart schema enforces this
-  ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md)).
+  digits, `_` or `-`. The Steward 0.3.2 chart schema enforces this
+  ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.2/charts/steward/README.md)).
 - The OAuth client is a Google Cloud "Web application" client in the
   Workspace organization, with an Internal consent screen and the single
   redirect URI `<Steward origin>/admin/auth/callback`. Google accepts

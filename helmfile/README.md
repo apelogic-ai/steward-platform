@@ -86,7 +86,7 @@ helmfile --file helmfile/helmfile.yaml.gotmpl --environment <name> \
   --kube-context <context> sync
 ```
 
-Steward's own [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md)
+Steward's own [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)
 stays the authority for its prerequisites, the objects it expects, and the
 checks after install.
 
@@ -106,7 +106,7 @@ you:
     | kubectl --context <context> apply --server-side -f -
   ```
 
-  Steward's guide: [upgrade, rollback, backup and removal](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md#upgrade-rollback-backup-and-removal).
+  Steward's guide: [upgrade, rollback, backup and removal](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md#upgrade-rollback-backup-and-removal).
 - **cert-manager's CRDs** are chart templates here (`crds.enabled: true`), so
   they upgrade with the release, and `crds.keep: true` keeps them if the
   release is deleted.
