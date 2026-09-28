@@ -3,13 +3,15 @@
 # Each download is checked against a pinned SHA-256. Linux amd64 only.
 #
 # Usage: scripts/ci/install-tools.sh TOOL...
-#        TOOL: crane, flux-schemas, helm, helmfile, kind, kubeconform, kubectl, yq
+#        TOOL: cosign, crane, flux-schemas, helm, helmfile, kind, kubeconform, kubectl, yq
 #        flux-schemas is Flux's CRD JSON schemas for kubeconform, extracted into
 #        FLUX_SCHEMAS_DIR (also exported to later GitHub Actions steps).
 # Env:   TOOLS_DIR (default: ${RUNNER_TEMP}/tools/bin)
 #        FLUX_SCHEMAS_DIR (default: TOOLS_DIR/../flux-crd-schemas)
 set -euo pipefail
 
+cosign_version=v3.1.3
+cosign_sha256=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 crane_version=v0.22.1
 crane_sha256=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
 # The Flux release whose CRD schemas validate examples/flux.
@@ -52,6 +54,11 @@ fetch() {
 
 for tool in "$@"; do
   case "${tool}" in
+    cosign)
+      fetch "https://github.com/sigstore/cosign/releases/download/${cosign_version}/cosign-linux-amd64" \
+        "${cosign_sha256}" "${work}/cosign"
+      install -m 0755 "${work}/cosign" "${tools_dir}/cosign"
+      ;;
     crane)
       fetch "https://github.com/google/go-containerregistry/releases/download/${crane_version}/go-containerregistry_Linux_x86_64.tar.gz" \
         "${crane_sha256}" "${work}/crane.tar.gz"

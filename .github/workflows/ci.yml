@@ -101,6 +101,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/verify-attestations.sh
 
+  signatures:
+    name: verify signatures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        run: scripts/ci/install-tools.sh cosign
+      - name: Verify product cosign bundles
+        run: scripts/verify-signatures.sh
+
   e2e-plan:
     name: plan e2e matrix
     runs-on: ubuntu-latest
@@ -137,3 +150,4 @@ jobs:
         env:
           K8S_VERSION: ${{ matrix.k8s }}
         run: tests/e2e/core/run.sh
+
