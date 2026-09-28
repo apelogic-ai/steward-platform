@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks for the Flux examples, examples/flux/<profile>. No cluster needed.
 #
-# For each example (core, task-auth, browser-admin):
+# For each example (core, task-auth, browser-admin, and mirrored: task-auth
+# from a registry mirror):
 #   - the committed files match a fresh generation from the BOM, so they cannot
 #     drift from it;
 #   - every object validates against the Flux CRD schemas (kubeconform, strict),
@@ -12,6 +13,10 @@
 #   - each OCIRepository points at its BOM chart and pins only its BOM digest,
 #     and each chart, pulled at that digest, renders with the HelmRelease
 #     values and uses the BOM image digests;
+#   - with a registry mirror in the platform values, every source (each
+#     OCIRepository and GitRepository) and every workload image points at the
+#     mirror, with its BOM digest or commit unchanged, and each source carries
+#     its class's credentials by reference (secretRef, provider, certSecretRef);
 #   - Steward's CRD is created on install and skipped on upgrade;
 #   - where the helmfile's presync hook server-side applies BOM manifests, a
 #     Flux Kustomization applies each, in the same order, from the manifest's
@@ -37,6 +42,7 @@ examples=(
   "core production"
   "task-auth production-task-auth"
   "browser-admin production-browser-admin"
+  "mirrored production-mirrored"
 )
 
 for tool in kubeconform helm helmfile git curl jq yq; do
@@ -51,6 +57,13 @@ mkdir -p "${DOCKER_CONFIG}"
 failures=0
 fail() { echo "FAIL $*" >&2; failures=$((failures + 1)); }
 pass() { echo "ok   $*"; }
+# shellcheck source=tests/lib/mirror.sh
+. "${repo_root}/tests/lib/mirror.sh"
+
+# The Flux access fields a source of CLASS must carry: the class's flux
+# settings in the platform values, as spec fields.
+expected_access() { yq -o=json -I=0 ".registry.$2.flux // {}" "$1" | jq -cS .; }
+actual_access() { jq -cS '.spec | {secretRef, provider, certSecretRef} | with_entries(select(.value != null))'; }
 sha256_of() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
@@ -115,6 +128,7 @@ directory_objects() {
 check_example() {
   local name="$1" environment="$2" example="${repo_root}/examples/flux/$1"
   local objects="${work}/${name}-objects.json"
+  local values="${repo_root}/environments/${environment}/platform-values.yaml"
 
   local manifests=()
   while IFS= read -r manifest; do manifests+=("${manifest}"); done \
@@ -140,11 +154,30 @@ check_example() {
   yq -o=json '.' "${manifests[@]}" | jq -s '[.[] | select(. != null)]' > "${objects}"
   object() { jq -c --arg k "$1" --arg n "$2" '[.[] | select(.kind == $k and .metadata.name == $n)] | if length == 1 then .[0] else null end' "${objects}"; }
 
+  # With a registry mirror for every class, every source is in a mirror.
+  if [[ "$(yq -r 'has("registry")' "${values}")" == true ]]; then
+    local prefixes outside
+    prefixes="$(yq -o=json '.registry' "${values}" | jq -c '[(.productCharts.prefix, .dependencyCharts.prefix) // empty | "oci://\(.)/"]
+      + [.gitSources.prefix // empty | "\(.)/"] + [.gitSources.repositories // {} | .[]]')"
+    outside="$(jq -r --argjson p "${prefixes}" '.[] | select(.kind == "OCIRepository" or .kind == "GitRepository")
+      | select(.spec.url as $u | any($p[]; . as $prefix | $u | startswith($prefix)) | not) | "\(.kind)/\(.metadata.name) \(.spec.url)"' "${objects}")"
+    if [[ -z "${outside}" ]]; then
+      pass "${name}: every OCIRepository and GitRepository points at the mirror"
+    else
+      fail "${name}: sources outside the mirror: ${outside//$'\n'/, }"
+    fi
+  fi
+
   # The helmfile for the same environment, from the same generated values.
   local generated="${work}/generated" helmfile_out="${work}/${name}-helmfile.yaml"
   "${repo_root}/scripts/generate.sh" --out "${generated}/${environment}" \
     "${repo_root}/environments/${environment}/platform-values.yaml" >/dev/null
-  if ! PLATFORM_GENERATED_DIR="${generated}" helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" \
+  local helmfile_env=("PLATFORM_GENERATED_DIR=${generated}")
+  if [[ "$(yq -r 'has("registry")' "${values}")" == true ]]; then
+    seed_helmfile_cache "${work}/helmfile-cache-${name}" "${generated}/${environment}/helmfile.yaml"
+    helmfile_env+=("HELMFILE_CACHE_HOME=${work}/helmfile-cache-${name}")
+  fi
+  if ! env "${helmfile_env[@]}" helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" \
     --environment "${environment}" build > "${helmfile_out}" 2>"${work}/helmfile.log"; then
     cat "${work}/helmfile.log" >&2
     fail "${name}: helmfile build failed"
@@ -166,7 +199,9 @@ check_example() {
   local hook_dependencies
   hook_dependencies="$(jq -r '.[] | .hooks // [] | .[]
     | select((.events | index("presync")) and .command == "../scripts/apply-manifests.sh")
-    | .args | (if .[0] == "--context" then .[2:] else . end) | .[]' "${releases}")"
+    | .args | . as $a
+    | [range(0; length) | select(($a[.] | IN("--context", "--url") | not) and (. == 0 or ($a[. - 1] | IN("--context", "--url") | not))) | $a[.]]
+    | .[]' "${releases}")"
   local crd_kustomizations=0
 
   local release
@@ -200,16 +235,20 @@ check_example() {
     local chart_info bom_path components archive rendered="${work}/${name}-${release}-rendered.yaml"
     if chart_info="$(bom_chart "${release}")"; then
       IFS=$'\t' read -r bom_path components <<<"${chart_info}"
-      local reference digest repository
+      local reference digest repository chart_class image_class url
       reference="$(jq -r "${bom_path}.chart.reference" "${bom}")"
       digest="$(jq -r "${bom_path}.chart.digest" "${bom}")"
       repository="$(object OCIRepository "${release}")"
-      if jq -e --arg url "${reference}" --arg digest "${digest}" \
+      if [[ "${bom_path}" == .products* ]]; then chart_class=productCharts image_class=productImages
+      else chart_class=dependencyCharts image_class=dependencyImages; fi
+      url="$(mirrored "${values}" "${chart_class}" "${reference}")"
+      if jq -e --arg url "${url}" --arg digest "${digest}" \
         '.spec.url == $url and .spec.ref == {digest: $digest} and .spec.layerSelector.operation == "copy"' \
-        <<<"${repository}" >/dev/null; then
-        pass "${name}: ${release} OCIRepository pins ${reference}@${digest}"
+        <<<"${repository}" >/dev/null \
+        && [[ "$(actual_access <<<"${repository}")" == "$(expected_access "${values}" "${chart_class}")" ]]; then
+        pass "${name}: ${release} OCIRepository pins ${url}@${digest}$([[ "${url}" != "${reference}" ]] && echo ", the BOM chart from the mirror")"
       else
-        fail "${name}: ${release} OCIRepository does not pin the BOM chart ${reference}@${digest}"
+        fail "${name}: ${release} OCIRepository does not pin the BOM chart ${url}@${digest} with the ${chart_class} access settings"
       fi
       if jq -e --arg n "${release}" '.spec.chartRef == {kind: "OCIRepository", name: $n} and (.spec | has("chart") | not)' <<<"${hr}" >/dev/null; then
         pass "${name}: ${release} HelmRelease uses that OCIRepository"
@@ -219,7 +258,7 @@ check_example() {
       archive="$(pull_chart "${reference}" "${digest}")" || { fail "${name}: cannot pull ${reference}@${digest}"; continue; }
       [[ "$(jq -r '.spec.values.web.enabled // false' <<<"${hr}")" == true ]] && components+=", .web"
     elif [[ "${release}" == steward-edge ]]; then
-      check_steward_edge "${name}" "${hr}" "$(object GitRepository steward-platform)"
+      check_steward_edge "${name}" "${values}" "${hr}" "$(object GitRepository steward-platform)"
       archive="${repo_root}/charts/steward-edge"
       components=""
     else
@@ -237,10 +276,22 @@ check_example() {
     local missing=0 ref
     if [[ -n "${components}" ]]; then
       while IFS= read -r ref; do
+        ref="$(mirrored "${values}" "${image_class}" "${ref}")"
         grep -Fq -- "${ref}" "${rendered}" || { fail "${name}: ${release} does not render BOM image ${ref}"; missing=1; }
       done < <(jq -r "${bom_path}.images | ${components}" "${bom}")
     fi
     [[ "${missing}" == 0 ]] && pass "${name}: ${release} renders with the chart${components:+ and the BOM image digests}"
+    # With a mirror, nothing the release runs comes from anywhere else.
+    if [[ "$(yq -r 'has("registry")' "${values}")" == true && -n "${components}" ]]; then
+      local expected_images workload image count=0 bad=0
+      expected_images="$(mirrored_bom_images "${values}")"
+      while IFS=$'\t' read -r workload image _; do
+        count=$((count + 1))
+        grep -Fxq -- "${image}" <<<"${expected_images}" \
+          || { fail "${name}: ${release} ${workload} runs ${image}, not a BOM image from the mirror"; bad=1; }
+      done < <(workload_images "${rendered}")
+      [[ "${bad}" == 0 ]] && pass "${name}: ${release} runs only BOM images from the mirror (${count} containers)"
+    fi
 
     # Releases that create Gateway API objects, or the controller that needs
     # the CRDs, retry while the CRD Kustomizations apply them.
@@ -265,7 +316,7 @@ check_example() {
   local previous="" dependency
   for dependency in ${hook_dependencies}; do
     crd_kustomizations=$((crd_kustomizations + 1))
-    check_manifest_kustomization "${name}" "${dependency}" "${previous}" \
+    check_manifest_kustomization "${name}" "${values}" "${dependency}" "${previous}" \
       "$(object Kustomization "${dependency%-crds}-crds")" \
       "$(object GitRepository "${dependency%-crds}-crds")" \
       "$(object OCIRepository "${dependency%-crds}-crds")"
@@ -289,7 +340,7 @@ check_example() {
 
 # One BOM manifest as a Kustomization over its fluxSource.
 check_manifest_kustomization() {
-  local name="$1" dependency="$2" previous="$3" kustomization="$4" git="$5" oci="$6"
+  local name="$1" values="$2" dependency="$3" previous="$4" kustomization="$5" git="$6" oci="$7"
   local label="${name}: ${dependency} CRDs" source path dir="${work}/sources/${dependency}"
   source="$(jq -c --arg d "${dependency}" '.dependencies[$d].manifests | if length == 1 then .[0].fluxSource else null end' "${bom}")"
   if [[ "${kustomization}" == null || "${source}" == null ]]; then
@@ -305,11 +356,14 @@ check_manifest_kustomization() {
 
   if jq -e '.git' <<<"${source}" >/dev/null; then
     path="$(jq -r '.git.path' <<<"${source}")"
-    if jq -e --argjson s "${source}" --arg name "${dependency%-crds}-crds" \
-        '.spec.url == $s.git.repository and .spec.ref == {commit: $s.git.commit}' <<<"${git}" >/dev/null \
+    local url
+    url="$(mirrored "${values}" gitSources "$(jq -r '.git.repository' <<<"${source}")")"
+    if jq -e --argjson s "${source}" --arg url "${url}" \
+        '.spec.url == $url and .spec.ref == {commit: $s.git.commit}' <<<"${git}" >/dev/null \
+      && [[ "$(actual_access <<<"${git}")" == "$(expected_access "${values}" gitSources)" ]] \
       && jq -e --arg name "${dependency%-crds}-crds" --arg path "./${path}" \
         '.spec.sourceRef == {kind: "GitRepository", name: $name} and .spec.path == $path' <<<"${kustomization}" >/dev/null; then
-      pass "${label}: from $(jq -r '.git.repository' <<<"${source}") at the BOM commit, ${path}"
+      pass "${label}: from ${url} at the BOM commit, ${path}"
     else
       fail "${label}: the GitRepository and Kustomization do not match the BOM fluxSource ${source}"
     fi
@@ -328,11 +382,14 @@ check_manifest_kustomization() {
     local reference digest archive
     reference="$(jq -r --arg d "${dependency}" '.dependencies[$d].chart.reference' "${bom}")"
     digest="$(jq -r --arg d "${dependency}" '.dependencies[$d].chart.digest' "${bom}")"
-    if jq -e --arg url "${reference}" --arg digest "${digest}" \
+    local url
+    url="$(mirrored "${values}" dependencyCharts "${reference}")"
+    if jq -e --arg url "${url}" --arg digest "${digest}" \
         '.spec.url == $url and .spec.ref == {digest: $digest} and .spec.layerSelector.operation == "extract"' <<<"${oci}" >/dev/null \
+      && [[ "$(actual_access <<<"${oci}")" == "$(expected_access "${values}" dependencyCharts)" ]] \
       && jq -e --arg name "${dependency%-crds}-crds" --arg path "./${path}" \
         '.spec.sourceRef == {kind: "OCIRepository", name: $name} and .spec.path == $path' <<<"${kustomization}" >/dev/null; then
-      pass "${label}: from the BOM chart ${reference}@${digest}, ${path}"
+      pass "${label}: from the BOM chart ${url}@${digest}, ${path}"
     else
       fail "${label}: the OCIRepository and Kustomization do not match the BOM chart and fluxSource ${source}"
     fi
@@ -361,13 +418,14 @@ check_manifest_kustomization() {
 
 # charts/steward-edge from this repository, at the tag of the platform version.
 check_steward_edge() {
-  local name="$1" hr="$2" git="$3" tag url
+  local name="$1" values="$2" hr="$3" git="$4" tag url upstream=https://github.com/apelogic-ai/steward-platform
   tag="$(jq -r .platformVersion "${bom}")"
-  url="$(jq -r '.spec.url' <<<"${git}")"
-  if jq -e --arg tag "${tag}" '.spec.ref == {tag: $tag} and .spec.url == "https://github.com/apelogic-ai/steward-platform"' <<<"${git}" >/dev/null \
+  url="$(mirrored "${values}" gitSources "${upstream}")"
+  if jq -e --arg tag "${tag}" --arg url "${url}" '.spec.ref == {tag: $tag} and .spec.url == $url' <<<"${git}" >/dev/null \
+    && [[ "$(actual_access <<<"${git}")" == "$(expected_access "${values}" gitSources)" ]] \
     && jq -e '.spec.chart.spec.chart == "./charts/steward-edge" and .spec.chart.spec.sourceRef == {kind: "GitRepository", name: "steward-platform"}
         and (.spec | has("chartRef") | not)' <<<"${hr}" >/dev/null; then
-    pass "${name}: steward-edge is built from this repository at tag ${tag}"
+    pass "${name}: steward-edge is built from this repository at tag ${tag}$([[ "${url}" != "${upstream}" ]] && echo ", from the mirror ${url}")"
   else
     fail "${name}: steward-edge must come from this repository at tag ${tag}"
     return
@@ -375,7 +433,8 @@ check_steward_edge() {
   local dir="${work}/steward-platform-${tag}"
   if [[ ! -d "${dir}" ]]; then
     git init -q "${dir}"
-    if ! git -C "${dir}" fetch -q --depth 1 "${url}" "refs/tags/${tag}" 2>/dev/null; then
+    # From upstream: the mirror holds the same tag.
+    if ! git -C "${dir}" fetch -q --depth 1 "${upstream}" "refs/tags/${tag}" 2>/dev/null; then
       # A platform version is tagged when it is released.
       echo "note ${name}: tag ${tag} is not published yet; steward-edge resolves once this platform version is released"
       return

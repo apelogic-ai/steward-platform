@@ -31,6 +31,9 @@ environments:
   production-browser-admin:
     values:
       - {{ $root }}/production-browser-admin/helmfile.yaml
+  production-mirrored:
+    values:
+      - {{ $root }}/production-mirrored/helmfile.yaml
 ---
 {{- $generated := printf "%s/%s/values" (env "PLATFORM_GENERATED_DIR" | default "../generated") .Environment.Name }}
 {{- $releases := .Values.releases }}
