@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "image", "port", "clusterDomain", "database", "user", "stewardDatabaseSecret", "resources"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", "maxLength": 63 },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "clusterDomain": { "type": "string", "minLength": 1 },
+    "database": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+    "user": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*$" },
+    "stewardDatabaseSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "key"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "resources": { "type": "object" }
+  }
+}

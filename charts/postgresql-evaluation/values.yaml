@@ -1,0 +1,21 @@
+# Name of the Deployment, Service and password Secret.
+name: postgresql-evaluation
+# PostgreSQL image, pinned by digest. The generator takes it from the BOM
+# (dependencies.postgresql.images.postgres).
+image:
+  repository: ""
+  tag: ""
+  digest: ""
+port: 5432
+clusterDomain: cluster.local
+# Database and role Steward uses.
+database: steward
+user: steward
+# The Secret Steward reads its database URL from (Steward chart
+# secrets.database). This chart writes it.
+stewardDatabaseSecret:
+  name: steward-database
+  key: url
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: "1", memory: 512Mi }

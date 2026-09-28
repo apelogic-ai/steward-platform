@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Core profile end-to-end test on a disposable kind cluster.
+# Core profile end-to-end test on a disposable kind cluster, through the
+# reference install.
 #
-# Installs the core profile (PostgreSQL for evaluation, service certificates,
-# Steward) using only the chart, image and node-image coordinates in the BOM,
-# then asserts that:
-#   - the running pods use the exact image digests from the BOM;
+# Creates a kind cluster from environments/kind/kind-config.yaml and the BOM
+# node image, runs scripts/generate.sh on environments/kind/platform-values.yaml,
+# installs with helmfile/helmfile.yaml.gotmpl (cert-manager, the evaluation CA,
+# evaluation PostgreSQL and Steward), then asserts that:
+#   - helmfile installs each BOM chart at its BOM digest, and the Steward chart
+#     at that digest has the BOM version;
+#   - the rendered chart and the running pods use the exact image digests from
+#     the BOM (Steward, cert-manager, PostgreSQL);
 #   - every database migration applied;
+#   - cert-manager issued both Steward certificates from the evaluation CA and
+#     injected the CA into the webhook;
 #   - the admission webhook denies an invalid AgentRuntime;
 #   - the API answers over verified TLS (401 on an admin route).
 #
@@ -14,31 +21,34 @@
 #   BOM           path to the BOM (default: bom/bom.json)
 #   K8S_VERSION   a version from kubernetes.tested (default: the highest)
 #   KEEP_CLUSTER  set to 1 to keep the cluster and work directory for debugging
-# Needs: docker (linux/amd64 engine), kind, helm, kubectl, jq, openssl, curl, tar.
-#
-# Ported from Steward's scripts/customer-core-install-e2e.sh at v0.3.0.
+# Needs: docker (linux/amd64 engine), kind, helm, helmfile, kubectl, jq, yq
+# (mikefarah v4), check-jsonschema, openssl, curl, tar.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 bom="${BOM:-${repo_root}/bom/bom.json}"
 keep_cluster="${KEEP_CLUSTER:-0}"
-namespace=steward
+environment_dir="${repo_root}/environments/kind"
+platform_values="${environment_dir}/platform-values.yaml"
+helmfile_file="${repo_root}/helmfile/helmfile.yaml.gotmpl"
 
 stage=preflight
 cluster_created=0
 port_forward_pid=""
 run_dir=""
 
-for tool in docker kind helm kubectl jq openssl curl tar; do
+for tool in docker kind helm helmfile kubectl jq yq check-jsonschema openssl curl tar; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
 done
 
-# --- Read every coordinate from the BOM -------------------------------------
+# --- Read every coordinate from the BOM and the platform values -------------
 
 bom_get() { jq -er "$1" "${bom}"; }
+values_get() { yq -er "$1" "${platform_values}"; }
 
 for member in '.profiles.core.products | index("steward")' \
-  '.profiles.core.dependencies | index("postgresql")'; do
+  '.profiles.core.dependencies | index("postgresql")' \
+  '.profiles.core.dependencies | index("cert-manager")'; do
   bom_get "${member}" >/dev/null || { echo "BOM core profile lacks ${member}" >&2; exit 2; }
 done
 
@@ -51,20 +61,41 @@ node_image="$(jq -er --arg v "${k8s_version}" '.kubernetes.tested[] | select(.ve
 chart_reference="$(bom_get .products.steward.chart.reference)"
 chart_version="$(bom_get .products.steward.chart.version)"
 chart_digest="$(bom_get .products.steward.chart.digest)"
-apiserver_ref="$(bom_get .products.steward.images.apiserver)"
-controller_ref="$(bom_get .products.steward.images.controller)"
+cert_manager_chart="$(bom_get '.dependencies["cert-manager"].chart | "\(.reference)@\(.digest)"')"
+steward_images=("$(bom_get .products.steward.images.apiserver)" "$(bom_get .products.steward.images.controller)")
+cert_manager_images=()
+for component in controller webhook cainjector; do
+  cert_manager_images+=("$(bom_get ".dependencies[\"cert-manager\"].images.${component}")")
+done
 postgres_ref="$(bom_get .dependencies.postgresql.images.postgres)"
 
-# Split registry/repository:tag@sha256:digest.
-image_repository() { local name="${1%@*}"; echo "${name%:*}"; }
-image_tag() { local name="${1%@*}"; echo "${name##*:}"; }
+environment="$(values_get .environment)"
+namespace="$(values_get .namespaces.steward)"
+cert_manager_namespace="$(values_get .namespaces.certManager)"
+postgres_name=postgresql-evaluation
+ca_name=steward-platform-evaluation-ca
+
 image_digest() { echo "${1#*@}"; }
 
-image_repo="$(image_repository "${apiserver_ref}")"
-if [[ "$(image_repository "${controller_ref}")" != "${image_repo}" ]]; then
-  echo "apiserver and controller images must share one repository for the chart" >&2
-  exit 2
-fi
+# True when IPv4 address $1 is inside CIDR $2.
+ipv4_in_cidr() {
+  local ip="$1" network="${2%/*}" bits="${2#*/}" a b c d
+  IFS=. read -r a b c d <<<"${ip}"
+  local ip_n=$(((a << 24) | (b << 16) | (c << 8) | d))
+  IFS=. read -r a b c d <<<"${network}"
+  local net_n=$(((a << 24) | (b << 16) | (c << 8) | d))
+  local mask=$(((0xffffffff << (32 - bits)) & 0xffffffff))
+  (((ip_n & mask) == (net_n & mask)))
+}
+ip_in_any() {
+  local ip="$1" cidr
+  shift
+  for cidr in "$@"; do
+    [[ "${cidr}" == */* && "${cidr}" != *:* ]] || continue
+    ipv4_in_cidr "${ip}" "${cidr}" && return 0
+  done
+  return 1
+}
 
 # --- Disposable resources and cleanup ---------------------------------------
 
@@ -75,17 +106,23 @@ temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 run_dir="$(mktemp -d "${temp_root%/}/spf-${run_id}.XXXXXX")"
 chmod 700 "${run_dir}"
 kubeconfig="${run_dir}/kubeconfig"
+generated="${run_dir}/generated"
 K=(kubectl --kubeconfig "${kubeconfig}" --context "${context}")
 KN=("${K[@]}" -n "${namespace}")
+HF=(env "KUBECONFIG=${kubeconfig}" "PLATFORM_GENERATED_DIR=${generated}"
+  helmfile --file "${helmfile_file}" --environment "${environment}" --kube-context "${context}")
 
 diagnostics() {
   echo "--- diagnostics" >&2
-  "${KN[@]}" get pods -o wide >&2 2>/dev/null
-  "${KN[@]}" get events --sort-by=.lastTimestamp 2>/dev/null | tail -40 >&2
-  for deployment in steward-apiserver steward-controller core-test-postgres; do
+  "${K[@]}" get pods -A -o wide >&2 2>/dev/null
+  "${KN[@]}" get certificates,issuers,certificaterequests -o wide >&2 2>/dev/null
+  "${K[@]}" get events -A --sort-by=.lastTimestamp 2>/dev/null | tail -40 >&2
+  for deployment in steward-apiserver steward-controller "${postgres_name}"; do
     echo "--- logs: ${deployment}" >&2
     "${KN[@]}" logs "deployment/${deployment}" --all-containers --tail=60 >&2 2>/dev/null
   done
+  echo "--- logs: cert-manager" >&2
+  "${K[@]}" -n "${cert_manager_namespace}" logs deployment/cert-manager --tail=40 >&2 2>/dev/null
 }
 
 cleanup() {
@@ -122,11 +159,26 @@ if [[ "${docker_arch}" != x86_64 && "${docker_arch}" != amd64 ]]; then
   exit 2
 fi
 
-echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}"
+echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}, environment ${environment}"
 echo "owned cluster ${cluster}, work directory ${run_dir}"
 
-# --- Chart ------------------------------------------------------------------
+# --- Generate and check the reference install inputs ------------------------
 
+stage=generate
+"${repo_root}/scripts/generate.sh" --bom "${bom}" --out "${generated}/${environment}" "${platform_values}"
+"${HF[@]}" build > "${run_dir}/helmfile-build.yaml"
+for pinned in "${chart_reference}@${chart_digest}" "${cert_manager_chart}"; do
+  release="${pinned%@*}"
+  release="${release##*/}"
+  actual="$(yq -r "select(.releases) | .releases[] | select(.name == \"${release}\") | .chart" "${run_dir}/helmfile-build.yaml")"
+  if [[ "${actual}" != "${pinned}" ]]; then
+    echo "helmfile installs ${release} from '${actual}', BOM pins ${pinned}" >&2
+    exit 1
+  fi
+done
+echo "pass: helmfile installs Steward and cert-manager at their BOM chart digests"
+
+# The Steward chart at the BOM digest is the BOM version.
 stage=chart
 helm pull "${chart_reference}@${chart_digest}" --destination "${run_dir}" >/dev/null
 chart_archive="$(find "${run_dir}" -maxdepth 1 -type f -name 'steward*.tgz' -print -quit)"
@@ -137,145 +189,87 @@ grep -Fxq "version: ${chart_version}" "${run_dir}/Chart.yaml" || {
   exit 1
 }
 
+stage=render
+"${HF[@]}" --selector name=steward template > "${run_dir}/rendered.yaml"
+for ref in "${steward_images[@]}"; do
+  grep -Fq "image: ${ref}" "${run_dir}/rendered.yaml" || {
+    echo "rendered chart does not use BOM image ${ref}" >&2
+    exit 1
+  }
+done
+echo "pass: rendered Steward chart uses the BOM image digests"
+
 # --- Cluster ----------------------------------------------------------------
 
 stage=cluster
 cluster_created=1
 kind create cluster --name "${cluster}" --kubeconfig "${kubeconfig}" \
-  --image "${node_image}" --wait 180s
+  --config "${environment_dir}/kind-config.yaml" --image "${node_image}" --wait 180s
 chmod 600 "${kubeconfig}"
 server_version="$("${K[@]}" version -o json | jq -r .serverVersion.gitVersion)"
 if [[ "${server_version}" != "v${k8s_version}" ]]; then
   echo "cluster runs ${server_version}, expected v${k8s_version}" >&2
   exit 1
 fi
-"${K[@]}" create namespace "${namespace}" >/dev/null
 
-# --- Credentials and certificates -------------------------------------------
+# The kind platform values describe this cluster: check before installing.
+stage=cluster_facts
+kube_api_cidrs=()
+while IFS= read -r cidr; do kube_api_cidrs+=("${cidr}"); done < <(values_get '.cluster.kubeApi.cidrs[]')
+kube_api_ip="$("${K[@]}" -n default get service kubernetes -o jsonpath='{.spec.clusterIP}')"
+ip_in_any "${kube_api_ip}" "${kube_api_cidrs[@]}" || {
+  echo "kubernetes Service IP ${kube_api_ip} is outside cluster.kubeApi.cidrs (${kube_api_cidrs[*]})" >&2
+  exit 1
+}
+token_audience="$("${K[@]}" get --raw /.well-known/openid-configuration | jq -er .issuer)"
+if [[ "${token_audience}" != "$(values_get .cluster.serviceAccountTokenAudience)" ]]; then
+  echo "cluster issuer ${token_audience} is not cluster.serviceAccountTokenAudience" >&2
+  exit 1
+fi
+echo "pass: cluster matches the kind platform values (API ${kube_api_ip}, audience ${token_audience})"
 
-stage=credentials
-umask 077
-openssl rand -hex 24 | tr -d '\n' > "${run_dir}/postgres-password"
-{
-  printf 'postgres://steward:'
-  cat "${run_dir}/postgres-password"
-  printf '@core-test-postgres.%s.svc.cluster.local:5432/steward?sslmode=disable' "${namespace}"
-} > "${run_dir}/database-url"
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-  -keyout "${run_dir}/ca.key" -out "${run_dir}/ca.crt" \
-  -subj '/CN=steward-platform core e2e CA' >/dev/null 2>&1
-for service in steward-apiserver steward-webhook; do
-  openssl req -newkey rsa:2048 -nodes \
-    -keyout "${run_dir}/${service}.key" -out "${run_dir}/${service}.csr" \
-    -subj "/CN=${service}.${namespace}.svc" >/dev/null 2>&1
-  printf 'subjectAltName=DNS:%s,DNS:%s.%s.svc,DNS:%s.%s.svc.cluster.local\n' \
-    "${service}" "${service}" "${namespace}" "${service}" "${namespace}" > "${run_dir}/${service}.ext"
-  openssl x509 -req -in "${run_dir}/${service}.csr" \
-    -CA "${run_dir}/ca.crt" -CAkey "${run_dir}/ca.key" -CAcreateserial \
-    -out "${run_dir}/${service}.crt" -days 1 -sha256 \
-    -extfile "${run_dir}/${service}.ext" >/dev/null 2>&1
-  openssl verify -CAfile "${run_dir}/ca.crt" "${run_dir}/${service}.crt" >/dev/null
-done
-"${KN[@]}" create secret generic steward-database \
-  --from-file="url=${run_dir}/database-url" >/dev/null
-"${KN[@]}" create secret generic core-test-postgres \
-  --from-file="password=${run_dir}/postgres-password" >/dev/null
-for service in steward-apiserver steward-webhook; do
-  "${KN[@]}" create secret tls "${service}-tls" \
-    --cert="${run_dir}/${service}.crt" --key="${run_dir}/${service}.key" >/dev/null
-done
-
-# --- PostgreSQL (evaluation only) -------------------------------------------
-
-stage=postgres
-"${KN[@]}" apply -f - >/dev/null <<YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: core-test-postgres
-spec:
-  replicas: 1
-  selector: {matchLabels: {app: core-test-postgres}}
-  template:
-    metadata:
-      labels: {app: core-test-postgres}
-    spec:
-      containers:
-        - name: postgres
-          image: ${postgres_ref}
-          env:
-            - {name: POSTGRES_USER, value: steward}
-            - {name: POSTGRES_DB, value: steward}
-            - {name: POSTGRES_PASSWORD_FILE, value: /run/postgres/password}
-          ports: [{containerPort: 5432}]
-          volumeMounts: [{name: password, mountPath: /run/postgres, readOnly: true}]
-          readinessProbe:
-            exec: {command: [pg_isready, -U, steward]}
-            periodSeconds: 3
-      volumes:
-        - name: password
-          secret: {secretName: core-test-postgres}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: core-test-postgres
-spec:
-  selector: {app: core-test-postgres}
-  ports: [{port: 5432, targetPort: 5432}]
-YAML
-"${KN[@]}" rollout status deployment/core-test-postgres --timeout=180s
-postgres_ip="$("${KN[@]}" get pod -l app=core-test-postgres -o jsonpath='{.items[0].status.podIP}')"
-
-# --- Steward ----------------------------------------------------------------
+# --- Install ----------------------------------------------------------------
 
 stage=install
-# The chart's NetworkPolicy needs literal CIDRs for the Kubernetes API and
-# PostgreSQL. TokenReview must use the audience this cluster's service account
-# tokens carry, which on kind is not the chart default.
-kube_api_ip="$("${K[@]}" -n default get service kubernetes -o jsonpath='{.spec.clusterIP}')"
-token_audience="$("${K[@]}" get --raw /.well-known/openid-configuration | jq -er .issuer)"
-values=(
-  --set-string "images.repository=${image_repo}"
-  --set-string "images.apiserver.tag=$(image_tag "${apiserver_ref}")"
-  --set-string "images.apiserver.digest=$(image_digest "${apiserver_ref}")"
-  --set-string "images.controller.tag=$(image_tag "${controller_ref}")"
-  --set-string "images.controller.digest=$(image_digest "${controller_ref}")"
-  --set-string "networkPolicy.kubeApiCidrs[0]=${kube_api_ip}/32"
-  --set-string "networkPolicy.postgresCidrs[0]=${postgres_ip}/32"
-  --set-string "config.apiserver.kubernetesTokenReviewAudience=${token_audience}"
-  --set-file "tls.webhook.caBundlePem=${run_dir}/ca.crt"
-)
-helm lint "${chart_archive}" "${values[@]}" >/dev/null
-helm template steward "${chart_archive}" --namespace "${namespace}" \
-  "${values[@]}" > "${run_dir}/rendered.yaml"
-for ref in "${apiserver_ref}" "${controller_ref}"; do
-  grep -Fq "image: ${ref}" "${run_dir}/rendered.yaml" || {
-    echo "rendered chart does not use BOM image ${ref}" >&2
-    exit 1
-  }
-done
-helm --kubeconfig "${kubeconfig}" --kube-context "${context}" \
-  upgrade --install steward "${chart_archive}" --namespace "${namespace}" \
-  --atomic --wait --timeout 10m "${values[@]}" >/dev/null
+"${HF[@]}" sync
 "${KN[@]}" rollout status deployment/steward-apiserver --timeout=180s
 "${KN[@]}" rollout status deployment/steward-controller --timeout=180s
 
 # --- Assertions -------------------------------------------------------------
 
 stage=assert-images
-image_ids="$("${KN[@]}" get pods -l app.kubernetes.io/name=steward \
-  -o jsonpath='{range .items[*].status.containerStatuses[*]}{.imageID}{"\n"}{end}')"
-for ref in "${apiserver_ref}" "${controller_ref}"; do
-  grep -Fq "@$(image_digest "${ref}")" <<<"${image_ids}" || {
-    echo "no running container uses BOM image ${ref}; running: ${image_ids}" >&2
-    exit 1
-  }
-done
-echo "pass: running pods use the BOM image digests"
+running_digests() {
+  "${K[@]}" -n "$1" get pods -l "$2" \
+    -o jsonpath='{range .items[*].status.containerStatuses[*]}{.imageID}{"\n"}{end}'
+}
+assert_running() {
+  local namespace="$1" selector="$2" ids ref
+  shift 2
+  ids="$(running_digests "${namespace}" "${selector}")"
+  for ref in "$@"; do
+    grep -Fq "@$(image_digest "${ref}")" <<<"${ids}" || {
+      echo "no running container in ${namespace} (${selector}) uses BOM image ${ref}; running: ${ids}" >&2
+      exit 1
+    }
+  done
+}
+assert_running "${namespace}" app.kubernetes.io/name=steward "${steward_images[@]}"
+assert_running "${cert_manager_namespace}" app.kubernetes.io/instance=cert-manager "${cert_manager_images[@]}"
+assert_running "${namespace}" app.kubernetes.io/name=postgresql-evaluation "${postgres_ref}"
+echo "pass: running Steward, cert-manager and PostgreSQL pods use the BOM image digests"
+
+stage=assert-network
+postgres_ip="$("${KN[@]}" get pod -l app.kubernetes.io/name=postgresql-evaluation -o jsonpath='{.items[0].status.podIP}')"
+postgres_cidrs=()
+while IFS= read -r cidr; do postgres_cidrs+=("${cidr}"); done < <(values_get '.database.cidrs[]')
+ip_in_any "${postgres_ip}" "${postgres_cidrs[@]}" || {
+  echo "PostgreSQL pod IP ${postgres_ip} is outside database.cidrs (${postgres_cidrs[*]})" >&2
+  exit 1
+}
+echo "pass: PostgreSQL pod ${postgres_ip} is inside the NetworkPolicy database CIDRs"
 
 stage=assert-migrations
-migration_counts="$("${KN[@]}" exec deployment/core-test-postgres -- \
+migration_counts="$("${KN[@]}" exec "deployment/${postgres_name}" -- \
   psql -U steward -d steward -Atc \
   "SELECT count(*)::text || ':' || (count(*) FILTER (WHERE success))::text FROM _sqlx_migrations")"
 if [[ ! "${migration_counts}" =~ ^([0-9]+):([0-9]+)$ ]] \
@@ -286,13 +280,44 @@ if [[ ! "${migration_counts}" =~ ^([0-9]+):([0-9]+)$ ]] \
 fi
 echo "pass: ${BASH_REMATCH[1]} migrations applied"
 
+stage=assert-certificates
+"${KN[@]}" wait --for=condition=Ready --timeout=120s \
+  certificate/steward-apiserver-tls certificate/steward-webhook-tls >/dev/null
+"${KN[@]}" get secret "${ca_name}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${run_dir}/ca.crt"
+openssl x509 -in "${run_dir}/ca.crt" -noout >/dev/null
+for secret in steward-apiserver-tls steward-webhook-tls; do
+  "${KN[@]}" get secret "${secret}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${run_dir}/${secret}.crt"
+  openssl verify -CAfile "${run_dir}/ca.crt" "${run_dir}/${secret}.crt" >/dev/null || {
+    echo "${secret} is not issued by the evaluation CA" >&2
+    exit 1
+  }
+done
+echo "pass: cert-manager issued both Steward certificates from the evaluation CA"
+
 stage=assert-admission
 "${K[@]}" get crd agentruntimes.agents.apelogic.ai -o json |
   jq -e 'any(.status.conditions[]?; .type == "Established" and .status == "True")' >/dev/null
+# cert-manager's CA injector fills the webhook CA bundle asynchronously.
+injected=0
+for _ in {1..60}; do
+  if "${K[@]}" get validatingwebhookconfiguration steward-agentruntime -o json |
+    jq -e 'all(.webhooks[]; (.clientConfig.caBundle // "") | length > 0)' >/dev/null; then
+    injected=1
+    break
+  fi
+  sleep 2
+done
+[[ "${injected}" == 1 ]] || { echo "cert-manager did not inject the webhook CA bundle" >&2; exit 1; }
 "${K[@]}" get validatingwebhookconfiguration steward-agentruntime -o json |
   jq -e 'all(.webhooks[]; .failurePolicy == "Fail" and
-      .clientConfig.service.name == "steward-webhook" and
-      ((.clientConfig.caBundle // "") | length > 0))' >/dev/null
+      .clientConfig.service.name == "steward-webhook")' >/dev/null
+"${K[@]}" get validatingwebhookconfiguration steward-agentruntime \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d > "${run_dir}/webhook-ca.crt"
+cmp -s <(openssl x509 -in "${run_dir}/ca.crt" -outform der) \
+  <(openssl x509 -in "${run_dir}/webhook-ca.crt" -outform der) || {
+  echo "the webhook CA bundle is not the evaluation CA" >&2
+  exit 1
+}
 if "${KN[@]}" create --dry-run=server -f - > "${run_dir}/admission.log" 2>&1 <<YAML
 apiVersion: agents.apelogic.ai/v1alpha1
 kind: AgentRuntime
@@ -334,7 +359,7 @@ if [[ ! "${forward_port}" =~ ^[0-9]+$ ]]; then
   echo "API port-forward did not become ready" >&2
   exit 1
 fi
-api_host="steward-apiserver.${namespace}.svc.cluster.local"
+api_host="steward-apiserver.${namespace}.svc.$(values_get .cluster.domain)"
 api_status="$(curl --silent --show-error --noproxy '*' \
   --cacert "${run_dir}/ca.crt" \
   --connect-to "${api_host}:443:127.0.0.1:${forward_port}" \
@@ -344,7 +369,7 @@ if [[ "${api_status}" != 401 ]]; then
   echo "admin route returned ${api_status}, expected 401 over verified TLS" >&2
   exit 1
 fi
-echo "pass: API answered 401 on an admin route over verified TLS"
+echo "pass: API answered 401 on an admin route over TLS verified against the evaluation CA"
 
 stage=complete
-echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}"
+echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}, reference install (${environment})"

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    app.kubernetes.io/name: postgresql-evaluation
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql-evaluation
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgresql-evaluation
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The postgres user of the official Alpine image.
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}@{{ .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            - { name: POSTGRES_USER, value: {{ .Values.user | quote }} }
+            - { name: POSTGRES_DB, value: {{ .Values.database | quote }} }
+            - { name: POSTGRES_PASSWORD_FILE, value: /run/postgres/password }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - { name: PGPORT, value: {{ .Values.port | quote }} }
+          ports:
+            - { name: postgres, containerPort: {{ .Values.port }} }
+          readinessProbe:
+            # Over TCP, so the probe fails during the entrypoint's socket-only
+            # initialization server.
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -p, {{ .Values.port | quote }}, -U, {{ .Values.user | quote }}, -d, {{ .Values.database | quote }}]
+            periodSeconds: 3
+            failureThreshold: 3
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          volumeMounts:
+            - { name: password, mountPath: /run/postgres, readOnly: true }
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: password
+          secret:
+            secretName: {{ .Values.name }}
+            items: [{ key: password, path: password }]
+        # No persistence: the database is recreated if the pod is.
+        - { name: data, emptyDir: {} }
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    app.kubernetes.io/name: postgresql-evaluation
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: postgresql-evaluation
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - { name: postgres, port: {{ .Values.port }}, targetPort: postgres }

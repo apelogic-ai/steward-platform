@@ -2,16 +2,16 @@
   "$schema": "../schemas/bom/v1.schema.json",
   "platformVersion": "2026.10.0-alpha.1",
   "kubernetes": {
-    "minVersion": "1.30",
+    "minVersion": "1.32",
     "maxVersion": "1.34",
     "tested": [
       {
-        "version": "1.30.13",
-        "nodeImage": "docker.io/kindest/node:v1.30.13@sha256:397209b3d947d154f6641f2d0ce8d473732bd91c87d9575ade99049aa33cd648"
-      },
-      {
         "version": "1.32.11",
         "nodeImage": "docker.io/kindest/node:v1.32.11@sha256:5fc52d52a7b9574015299724bd68f183702956aa4a2116ae75a63cb574b35af8"
+      },
+      {
+        "version": "1.33.7",
+        "nodeImage": "docker.io/kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040"
       },
       {
         "version": "1.34.3",
@@ -50,6 +50,25 @@
     }
   },
   "dependencies": {
+    "cert-manager": {
+      "description": "Issues the Steward API and webhook certificates and injects the webhook CA bundle, through the Steward chart's certManager TLS mode. The reference install uses it in every environment; an operator who already runs cert-manager can keep theirs.",
+      "version": "1.21.2",
+      "source": "https://cert-manager.io",
+      "usage": "reference-install",
+      "requiredFor": ["core"],
+      "chart": {
+        "reference": "oci://quay.io/jetstack/charts/cert-manager",
+        "version": "v1.21.2",
+        "digest": "sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610"
+      },
+      "images": {
+        "controller": "quay.io/jetstack/cert-manager-controller:v1.21.2@sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8",
+        "webhook": "quay.io/jetstack/cert-manager-webhook:v1.21.2@sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae",
+        "cainjector": "quay.io/jetstack/cert-manager-cainjector:v1.21.2@sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562",
+        "startupapicheck": "quay.io/jetstack/cert-manager-startupapicheck:v1.21.2@sha256:46e75b6866359ffb5d82624f41e3ed1c70b2994982702ced547ce5edb418a8f5",
+        "acmesolver": "quay.io/jetstack/cert-manager-acmesolver:v1.21.2@sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
+      }
+    },
     "postgresql": {
       "description": "Database for Steward. Evaluation and tests only; production installs use a separately operated PostgreSQL 16.",
       "version": "16.14",
@@ -63,9 +82,9 @@
   },
   "profiles": {
     "core": {
-      "description": "Steward API, admission webhook and controller with a PostgreSQL database. No agent execution.",
+      "description": "Steward API, admission webhook and controller with a PostgreSQL database, and cert-manager for service TLS. No agent execution.",
       "products": ["steward"],
-      "dependencies": ["postgresql"]
+      "dependencies": ["cert-manager", "postgresql"]
     }
   }
 }

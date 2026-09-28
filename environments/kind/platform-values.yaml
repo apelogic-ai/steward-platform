@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../../schemas/platform-values/v1.schema.json
+#
+# Evaluation install of the core profile on a local kind cluster created from
+# kind-config.yaml in this directory. Not for production: PostgreSQL runs in
+# the cluster without TLS or persistence, and certificates come from a
+# self-signed CA.
+apiVersion: steward-platform/v1
+kind: PlatformValues
+environment: kind
+purpose: evaluation
+profile: core
+
+cluster:
+  domain: cluster.local
+  # kind's service account issuer. Steward's chart default is
+  # https://kubernetes.default.svc, which kind tokens do not carry.
+  serviceAccountTokenAudience: https://kubernetes.default.svc.cluster.local
+  dnsNamespace: kube-system
+  kubeApi:
+    # The kubernetes Service IP: the first address of serviceSubnet in
+    # kind-config.yaml.
+    cidrs: [10.96.0.1/32]
+    port: 443
+
+namespaces:
+  steward: steward
+  certManager: cert-manager
+
+tls:
+  mode: certManager
+  certManager:
+    install: true
+    issuer:
+      source: evaluation
+
+database:
+  source: evaluation
+  secret:
+    name: steward-database
+    key: url
+  # The evaluation PostgreSQL pod has no fixed address, so allow the pod
+  # subnet from kind-config.yaml on the PostgreSQL port only.
+  cidrs: [10.244.0.0/16]
+  port: 5432
+  tls:
+    mode: disabled

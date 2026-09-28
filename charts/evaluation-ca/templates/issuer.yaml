@@ -1,0 +1,44 @@
+# Bootstrap: a self-signed issuer that signs only the CA certificate below.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.name }}-bootstrap
+  labels:
+    app.kubernetes.io/name: evaluation-ca
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    app.kubernetes.io/name: evaluation-ca
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  isCA: true
+  commonName: steward-platform evaluation CA
+  secretName: {{ .Values.name }}
+  duration: {{ .Values.duration }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ .Values.name }}-bootstrap
+    kind: Issuer
+    group: cert-manager.io
+---
+# The issuer Steward's certificates use. Each issued Secret carries this CA as
+# ca.crt, which cert-manager's CA injector copies into Steward's webhook.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    app.kubernetes.io/name: evaluation-ca
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  ca:
+    secretName: {{ .Values.name }}

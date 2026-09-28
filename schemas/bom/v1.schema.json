@@ -99,7 +99,11 @@
           "type": "string",
           "pattern": "^oci://[a-z0-9-]+(\\.[a-z0-9-]+)+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+$"
         },
-        "version": { "$ref": "#/$defs/semver" },
+        "version": {
+          "description": "Chart version exactly as published, which is also its OCI tag. Some upstream charts use a leading v.",
+          "type": "string",
+          "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
         "digest": { "$ref": "#/$defs/digest" }
       }
     },
@@ -179,8 +183,8 @@
           "$ref": "#/$defs/httpsUrl"
         },
         "usage": {
-          "description": "required: the platform needs this dependency as pinned. evaluation-only: used by tests and evaluation installs; production installs bring their own equivalent.",
-          "enum": ["required", "evaluation-only"]
+          "description": "required: the platform needs this dependency as pinned. reference-install: the reference installs (helmfile and Flux) install it in every environment, production included; an operator who already runs an equivalent may keep theirs. evaluation-only: used by tests and evaluation installs; production installs bring their own equivalent.",
+          "enum": ["required", "reference-install", "evaluation-only"]
         },
         "requiredFor": {
           "description": "Profiles that include this dependency.",
