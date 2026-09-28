@@ -119,8 +119,8 @@ verifies the product attestations and signatures. See [docs/verification.md](doc
 
 ## Status
 
-Pre-release. The current BOM (`2026.10.0-alpha.3`) pins the core and task-auth
-profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
+Pre-release. The current BOM (`2026.10.0-alpha.4`) pins the core, task-auth
+and browser-admin profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
 cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for evaluation,
 PostgreSQL 16.
 There are no platform releases yet.

@@ -32,7 +32,9 @@ To bump a product:
 1. Take the coordinates from the product's own release metadata, not from a
    tag lookup: `release-handoff.json` for Steward, `release-manifest.json` for
    github-oidc-exchange and `oss-release-manifest.json` for steward-run (its
-   `actionCommit` is `action.commit`), all on the GitHub release. Verify the
+   `actionCommit` is `action.commit`, `workflowRepository` and
+   `workflowCommit` are `workflow`, and `schemaVersion` is
+   `signatures.releaseManifest.schemaVersion`), all on the GitHub release. Verify the
    metadata first, as the release notes describe.
 2. Update the product entry: `version`, `commit`, `release`, the chart version
    and digest, every image reference, and `provenance.sourceRef`.
