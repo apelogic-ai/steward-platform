@@ -114,9 +114,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.38.2
       - name: Install tools
-        run: scripts/ci/install-tools.sh kind helm kubectl
-      - name: Run core e2e from the BOM
+        run: scripts/ci/install-tools.sh kind helm helmfile kubectl yq
+      - name: Run core e2e through the reference install
         env:
           K8S_VERSION: ${{ matrix.k8s }}
         run: tests/e2e/core/run.sh

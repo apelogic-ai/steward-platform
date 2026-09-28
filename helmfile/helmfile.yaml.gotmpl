@@ -8,16 +8,19 @@
 #   helmfile -f helmfile/helmfile.yaml.gotmpl -e kind sync
 #
 # To add an environment, add an entry below whose name matches the
-# `environment` field of its platform values file.
+# `environment` field of its platform values file. PLATFORM_GENERATED_DIR
+# points at another output root than ../generated (scripts/generate.sh --out
+# <root>/<environment>).
+{{- $root := env "PLATFORM_GENERATED_DIR" | default "../generated" }}
 environments:
   kind:
     values:
-      - ../generated/kind/helmfile.yaml
+      - {{ $root }}/kind/helmfile.yaml
   production:
     values:
-      - ../generated/production/helmfile.yaml
+      - {{ $root }}/production/helmfile.yaml
 ---
-{{- $generated := printf "../generated/%s/values" .Environment.Name }}
+{{- $generated := printf "%s/%s/values" (env "PLATFORM_GENERATED_DIR" | default "../generated") .Environment.Name }}
 {{- $releases := .Values.releases }}
 {{- $ns := .Values.namespaces }}
 
