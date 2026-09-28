@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=../../schemas/platform-values/v1.schema.json
+#
+# Production-shaped install of the task-auth profile. Copy this directory, give
+# the environment your own name, and replace every value marked REPLACE. The
+# addresses below are documentation ranges (RFC 5737) and the hostnames are
+# under example.com; neither works as-is. examples/flux/task-auth is the Flux
+# output for this file.
+#
+# Before installing, the operator provides (see docs/profiles/task-auth.md):
+#   - everything the core production shape needs (../production): the
+#     PostgreSQL database, its Secret and CA, and the cert-manager issuer;
+#   - the Gateway named in edge.gateway, with an HTTPS listener for both public
+#     hostnames that admits routes from the Steward and exchange namespaces;
+#   - the ConfigMap named in edge.stewardBackendCaConfigMap, in the Steward
+#     namespace: the public CA of the Steward API certificate;
+#   - the exchange policy ConfigMap and keyring Secret, in the exchange
+#     namespace, and the exchange's public JWKS ConfigMap, in the Steward
+#     namespace.
+apiVersion: steward-platform/v1
+kind: PlatformValues
+environment: production-task-auth
+purpose: production
+profile: task-auth
+
+cluster:
+  domain: cluster.local
+  # REPLACE: the issuer from
+  #   kubectl get --raw /.well-known/openid-configuration
+  serviceAccountTokenAudience: https://kubernetes.default.svc
+  dnsNamespace: kube-system
+  kubeApi:
+    # REPLACE: the Kubernetes API address and port your CNI matches. See
+    # docs/prerequisites.md#networkpolicy.
+    cidrs: [192.0.2.10/32]
+    port: 443
+
+namespaces:
+  steward: steward
+  certManager: cert-manager
+  identityExchange: identity
+
+serviceAccounts:
+  steward:
+    apiserver:
+      annotations: {}
+    controller:
+      annotations: {}
+  identityExchange:
+    annotations: {}
+
+tls:
+  mode: certManager
+  certManager:
+    # Set false if the cluster already runs cert-manager.
+    install: true
+    issuer:
+      source: operator
+      ref:
+        # REPLACE: an existing Issuer (in the Steward namespace) or
+        # ClusterIssuer that your PKI approves for service certificates.
+        name: example-ca
+        kind: ClusterIssuer
+
+database:
+  source: operator
+  # Create this Secret before installing. Its value is the full database URL,
+  # with sslmode=verify-full&sslrootcert=/run/database-tls/ca.crt.
+  secret:
+    name: steward-database
+    key: url
+  # REPLACE: the literal address of the database.
+  cidrs: [198.51.100.20/32]
+  port: 5432
+  tls:
+    mode: verify-full
+    ca:
+      kind: ConfigMap
+      name: steward-database-ca
+      key: ca.crt
+
+networkPolicy:
+  apiserverIngressNamespaces: []
+  # Envoy Gateway runs its Envoy proxies in its own namespace.
+  edgeNamespace: envoy-gateway-system
+
+publicEndpoints:
+  # REPLACE: your public Steward origin and exchange issuer.
+  steward: https://steward.example.com
+  identityIssuer: https://identity.example.com
+
+audiences:
+  taskApi: steward-task-api
+
+edge:
+  # The BOM-pinned Gateway API CRDs and Envoy Gateway. Set false if the
+  # cluster already runs a Gateway API implementation with BackendTLSPolicy.
+  install: true
+  gateway:
+    source: operator
+    # REPLACE: your Gateway and its HTTPS listener.
+    name: steward-edge
+    namespace: envoy-gateway-system
+    listener: https
+  # REPLACE: the source addresses of your edge data plane.
+  clientCidrs: [203.0.113.0/24]
+  stewardBackendCaConfigMap: steward-apiserver-ca
+
+identityExchange:
+  # REPLACE: the audience your workflows request from GitHub.
+  githubAudience: steward-platform-task-auth
+  policy:
+    contract: github-oidc-exchange.apelogic.io/v6
+    configMapName: github-oidc-exchange-policy-v6
+    revision: v6-rev-1
+  keyring:
+    secretName: github-oidc-exchange-keyring
+    revision: rev-1
+  publicJwksConfigMap:
+    name: github-oidc-exchange-jwks
+    key: jwks.json

@@ -434,10 +434,17 @@ def helmfile_environment($bom):
 # Flux objects live here; each HelmRelease installs into its own namespace.
 def flux_namespace: "flux-system";
 
+# This repository, for its in-repo steward-edge chart.
+def platform_repository: "https://github.com/apelogic-ai/steward-platform";
+
+# The Helm chart layer of an OCI chart artifact.
+def helm_chart_media_type: "application/vnd.cncf.helm.chart.content.v1.tar+gzip";
+
 # OCIRepository for a BOM chart, pinned by digest. The layer selector picks the
-# chart archive (cert-manager also publishes a provenance layer).
+# chart archive (cert-manager also publishes a provenance layer): "copy" keeps
+# it as a chart for a HelmRelease, "extract" unpacks it for a Kustomization.
 # https://fluxcd.io/flux/components/source/ocirepositories/
-def flux_oci_repository($name; $chart):
+def flux_oci_repository($name; $chart; $operation):
   {
     apiVersion: "source.toolkit.fluxcd.io/v1",
     kind: "OCIRepository",
@@ -446,59 +453,180 @@ def flux_oci_repository($name; $chart):
       interval: "1h",
       url: $chart.reference,
       ref: {digest: $chart.digest},
-      layerSelector: {
-        mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
-        operation: "copy"
-      }
+      layerSelector: {mediaType: helm_chart_media_type, operation: $operation}
+    }
+  };
+def flux_oci_repository($name; $chart): flux_oci_repository($name; $chart; "copy");
+
+# GitRepository at a pinned commit or tag, keeping only one directory in the
+# artifact.
+# https://fluxcd.io/flux/components/source/gitrepositories/
+def flux_git_repository($name; $url; $ref; $path):
+  {
+    apiVersion: "source.toolkit.fluxcd.io/v1",
+    kind: "GitRepository",
+    metadata: {name: $name, namespace: flux_namespace},
+    spec: {
+      interval: "1h",
+      url: $url,
+      ref: $ref,
+      ignore: "/*\n!/\($path)/\n"
     }
   };
 
-# https://fluxcd.io/flux/components/helm/helmreleases/
-def flux_helm_release($name; $namespace; $depends_on; $crds_on_upgrade; $values):
+# Kustomization that server-side applies a directory of plain manifests, as
+# scripts/apply-manifests.sh does for the helmfile. prune: false never deletes
+# CRDs (and with them every object of their kinds), also when the
+# Kustomization itself is removed; wait: true is ready once they are
+# established.
+# https://fluxcd.io/flux/components/kustomize/kustomizations/
+def flux_manifests_kustomization($name; $source_kind; $path; $depends_on):
   {
-    apiVersion: "helm.toolkit.fluxcd.io/v2",
-    kind: "HelmRelease",
+    apiVersion: "kustomize.toolkit.fluxcd.io/v1",
+    kind: "Kustomization",
     metadata: {name: $name, namespace: flux_namespace},
     spec: (
       {
         interval: "1h",
-        releaseName: $name,
-        targetNamespace: $namespace,
-        storageNamespace: $namespace,
-        chartRef: {kind: "OCIRepository", name: $name}
+        sourceRef: {kind: $source_kind, name: $name},
+        path: "./\($path)",
+        prune: false,
+        wait: true,
+        timeout: "5m"
       }
       + (if ($depends_on | length) > 0 then {dependsOn: [$depends_on[] | {name: .}]} else {} end)
-      + {
-        install: {createNamespace: true, crds: "Create", remediation: {retries: 3}},
-        upgrade: {crds: $crds_on_upgrade, remediation: {retries: 3}},
-        values: $values
-      }
     )
   };
 
-# The Flux example covers the BOM charts only. Evaluation pieces are in-repo
-# charts that the helmfile installs; an environment that uses them gets no
-# Flux output.
-# The Flux output covers the core profile only for now.
-def flux_supported: .profile == "core" and ((uses_evaluation_issuer or uses_evaluation_database) | not);
+# https://fluxcd.io/flux/components/helm/helmreleases/
+#
+# $options:
+#   chart         {chartRef: ...} or {chart: ...}; default: the OCIRepository
+#                 of the same name
+#   crdsOnUpgrade Create or Skip (default Skip, which is Helm's behaviour);
+#   crds          both install and upgrade, overriding the two defaults
+#   retry         retry a failed install or upgrade every minute, without
+#                 remediation, instead of three remediated attempts
+def flux_helm_release($name; $namespace; $depends_on; $options; $values):
+  ($options.crds // "Create") as $install_crds
+  | ($options.crds // $options.crdsOnUpgrade // "Skip") as $upgrade_crds
+  | (if $options.retry then {strategy: {name: "RetryOnFailure", retryInterval: "1m"}}
+     else {remediation: {retries: 3}} end) as $on_failure
+  | {
+      apiVersion: "helm.toolkit.fluxcd.io/v2",
+      kind: "HelmRelease",
+      metadata: {name: $name, namespace: flux_namespace},
+      spec: (
+        {
+          interval: "1h",
+          releaseName: $name,
+          targetNamespace: $namespace,
+          storageNamespace: $namespace
+        }
+        + ($options.chart // {chartRef: {kind: "OCIRepository", name: $name}})
+        + (if ($depends_on | length) > 0 then {dependsOn: [$depends_on[] | {name: .}]} else {} end)
+        + {
+          install: ({createNamespace: true, crds: $install_crds} + $on_failure),
+          upgrade: ({crds: $upgrade_crds} + $on_failure),
+          values: $values
+        }
+      )
+    };
+
+# The Flux output covers the production shape: the BOM charts, and
+# charts/steward-edge from this repository. The evaluation pieces (CA,
+# PostgreSQL, Gateway) are in-repo charts that only the helmfile installs; an
+# environment that uses any of them gets no Flux output.
+def flux_supported:
+  (uses_evaluation_issuer or uses_evaluation_database or uses_evaluation_gateway) | not;
+
+# The BOM manifests the helmfile server-side applies before envoy-gateway
+# (its presync hook), in that order, each with the Flux source of the same
+# objects.
+def flux_edge_manifests($bom):
+  ["gateway-api-crds", "envoy-gateway"]
+  | map(. as $dependency | $bom.dependencies[$dependency] as $d
+      | ($d.manifests // error("BOM: \($dependency) pins no manifests"))
+      | if length != 1 then error("BOM: the Flux output takes one manifest per dependency; \($dependency) pins \(length)") else .[0] end
+      | (.fluxSource // error("BOM: \($dependency) manifest \(.url) has no fluxSource"))
+      | {dependency: $dependency, name: "\($dependency | rtrimstr("-crds"))-crds", source: ., chart: $d.chart});
+
+def flux_manifest_objects($manifest; $depends_on):
+  if $manifest.source.git then
+    $manifest.source.git as $git
+    | [flux_git_repository($manifest.name; $git.repository; {commit: $git.commit}; $git.path),
+       flux_manifests_kustomization($manifest.name; "GitRepository"; $git.path; $depends_on)]
+  else
+    [flux_oci_repository($manifest.name; $manifest.chart; "extract"),
+     flux_manifests_kustomization($manifest.name; "OCIRepository"; $manifest.source.chart.path; $depends_on)]
+  end;
 
 def flux_files($bom; $ca_bundle):
   . as $v
-  | (if $v | installs_cert_manager then
+  | ($v | installs_cert_manager) as $cert_manager
+  | ($v | installs_edge) as $edge
+  | ($v | task_auth and (browser_admin | not)) as $steward_edge
+  # Flux cannot order a HelmRelease after a Kustomization. With the edge
+  # installed here, the releases that need the Gateway API or Envoy Gateway
+  # CRDs retry until the CRD Kustomizations have applied them.
+  | {retry: $edge} as $needs_crds
+  | (if $cert_manager then
       {"flux/cert-manager.yaml": [
         flux_oci_repository("cert-manager"; $bom.dependencies["cert-manager"].chart),
-        flux_helm_release("cert-manager"; $v.namespaces.certManager; []; "Create"; cert_manager_values($bom))
+        flux_helm_release("cert-manager"; $v.namespaces.certManager; []; {crdsOnUpgrade: "Create"}; cert_manager_values($bom))
       ]}
     else {} end)
   + {"flux/steward.yaml": [
       flux_oci_repository("steward"; $bom.products.steward.chart),
       # Steward's CRD is in the chart's crds/ directory. Skip keeps Helm's
       # behaviour: the CRD is upgraded deliberately, after reading the release
-      # notes (see helmfile/README.md).
+      # notes (see helmfile/README.md). In browser-admin Steward renders its
+      # own routes, so it follows envoy-gateway as in the helmfile.
       flux_helm_release("steward"; $v.namespaces.steward;
-        (if $v | installs_cert_manager then ["cert-manager"] else [] end); "Skip";
+        (if $cert_manager then ["cert-manager"] else [] end)
+          + (if ($v | browser_admin) and $edge then ["envoy-gateway"] else [] end);
+        (if $v | browser_admin then $needs_crds else {} end);
         ($v | steward_values($bom; $ca_bundle)))
     ]}
+  + (if $edge then
+      # The helmfile's presync hook, as Kustomizations: the Gateway API CRDs,
+      # then Envoy Gateway's, server-side applied.
+      (flux_edge_manifests($bom)) as $manifests
+      | reduce range(0; $manifests | length) as $i ({};
+          . + {"flux/\($manifests[$i].name).yaml":
+                flux_manifest_objects($manifests[$i];
+                  (if $i > 0 then [$manifests[$i - 1].name] else [] end))})
+      + {"flux/envoy-gateway.yaml": [
+          flux_oci_repository("envoy-gateway"; $bom.dependencies["envoy-gateway"].chart),
+          # The CRDs belong to the Kustomizations above, never to Helm.
+          flux_helm_release("envoy-gateway"; $v.networkPolicy.edgeNamespace; [];
+            $needs_crds + {crds: "Skip"}; envoy_gateway_values($bom))
+        ]}
+    else {} end)
+  + (if $steward_edge then
+      # charts/steward-edge is not published as an artifact: Flux builds it
+      # from this repository at the tag of this platform version.
+      {"flux/steward-edge.yaml": [
+        flux_git_repository("steward-platform"; platform_repository;
+          {tag: $bom.platformVersion}; "charts/steward-edge"),
+        flux_helm_release("steward-edge"; $v.namespaces.steward;
+          ["steward"] + (if $edge then ["envoy-gateway"] else [] end);
+          $needs_crds + {chart: {chart: {spec: {
+            chart: "./charts/steward-edge",
+            sourceRef: {kind: "GitRepository", name: "steward-platform"},
+            reconcileStrategy: "Revision"
+          }}}};
+          ($v | steward_edge_values))
+      ]}
+    else {} end)
+  + (if $v | task_auth then
+      {"flux/github-oidc-exchange.yaml": [
+        flux_oci_repository("github-oidc-exchange"; $bom.products["github-oidc-exchange"].chart),
+        flux_helm_release("github-oidc-exchange"; $v.namespaces.identityExchange;
+          (if $edge then ["envoy-gateway"] else [] end); $needs_crds;
+          ($v | identity_values($bom)))
+      ]}
+    else {} end)
   | . + {"flux/kustomization.yaml": {
       apiVersion: "kustomize.config.k8s.io/v1beta1",
       kind: "Kustomization",
