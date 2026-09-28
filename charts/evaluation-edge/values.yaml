@@ -1,0 +1,21 @@
+# GatewayClass (cluster-scoped) and its EnvoyProxy parameters.
+gatewayClassName: steward-platform-evaluation
+# Envoy Gateway's controller name, from its chart configuration.
+controllerName: gateway.envoyproxy.io/gatewayclass-controller
+gateway:
+  name: steward-platform-edge
+  # HTTPS listener (sectionName) serving every hostname.
+  listener: https
+# Public hostnames the listener certificate covers.
+hostnames: []
+# Namespaces whose routes may attach to the listener.
+routeNamespaces: []
+# cert-manager Issuer in this namespace that signs the listener certificate.
+issuerName: steward-platform-edge-ca
+# The evaluation Steward CA, published as a ConfigMap with key ca.crt in the
+# Steward namespace. Read from the CA Secret at install time, so install this
+# chart after the Steward CA exists.
+stewardCa:
+  namespace: steward
+  secretName: steward-platform-evaluation-ca
+  configMapName: steward-apiserver-ca

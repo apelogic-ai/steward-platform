@@ -51,6 +51,25 @@ steward_chart="$(pull_chart "$(jq -r .products.steward.chart.reference "${bom}")
 cert_manager_chart="$(pull_chart "$(jq -r '.dependencies["cert-manager"].chart.reference' "${bom}")" \
   "$(jq -r '.dependencies["cert-manager"].chart.digest' "${bom}")" \
   "$(jq -r '.dependencies["cert-manager"].chart.version' "${bom}")" cert-manager)"
+# task-auth BOM charts, keyed by the generated values file name.
+bom_chart_names=(github-oidc-exchange envoy-gateway)
+bom_chart_archives=()
+while IFS=$'\t' read -r bom_path chart_name; do
+  bom_chart_archives+=("$(pull_chart "$(jq -r "${bom_path}.chart.reference" "${bom}")" \
+    "$(jq -r "${bom_path}.chart.digest" "${bom}")" \
+    "$(jq -r "${bom_path}.chart.version" "${bom}")" "${chart_name}")")
+done <<'CHARTS'
+.products["github-oidc-exchange"]	github-oidc-exchange
+.dependencies["envoy-gateway"]	gateway-helm
+CHARTS
+# In-repo charts: generated values file name -> chart directory under charts/.
+local_chart() {
+  case "$1" in
+    evaluation-ca | edge-evaluation-ca) echo evaluation-ca ;;
+    postgresql-evaluation | evaluation-edge | steward-edge) echo "$1" ;;
+    *) return 1 ;;
+  esac
+}
 
 # Render one generated environment with every chart it configures.
 check_environment() {
@@ -102,18 +121,58 @@ check_environment() {
     done
   fi
 
-  local chart
-  for chart in evaluation-ca postgresql-evaluation; do
-    [[ -f "${out}/values/${chart}.yaml" ]] || continue
-    if helm lint "${repo_root}/charts/${chart}" -f "${out}/values/${chart}.yaml" >"${work}/lint.log" 2>&1 \
-      && helm template "${chart}" "${repo_root}/charts/${chart}" --namespace "${namespace}" \
-        -f "${out}/values/${chart}.yaml" >/dev/null 2>"${work}/template.log"; then
-      pass "${name}: ${chart} values pass the chart"
+  local values_file values_name chart archive index
+  for values_file in "${out}"/values/*.yaml; do
+    values_name="$(basename "${values_file}" .yaml)"
+    chart="$(local_chart "${values_name}")" || continue
+    if helm lint "${repo_root}/charts/${chart}" -f "${values_file}" >"${work}/lint.log" 2>&1 \
+      && helm template "${values_name}" "${repo_root}/charts/${chart}" --namespace "${namespace}" \
+        -f "${values_file}" >/dev/null 2>"${work}/template.log"; then
+      pass "${name}: ${values_name} values pass charts/${chart}"
     else
       cat "${work}/lint.log" "${work}/template.log" >&2
-      fail "${name}: ${chart} values rejected by the chart"
+      fail "${name}: ${values_name} values rejected by charts/${chart}"
     fi
   done
+
+  # task-auth BOM charts, by digest. github-oidc-exchange lints strictly, as
+  # its own validate-chart-values.sh does.
+  for index in "${!bom_chart_names[@]}"; do
+    values_name="${bom_chart_names[${index}]}"
+    archive="${bom_chart_archives[${index}]}"
+    [[ -f "${out}/values/${values_name}.yaml" ]] || continue
+    local lint_args=(--quiet)
+    [[ "${values_name}" == github-oidc-exchange ]] && lint_args+=(--strict)
+    if helm lint "${lint_args[@]}" "${archive}" -f "${out}/values/${values_name}.yaml" >"${work}/lint.log" 2>&1 \
+      && helm template "${values_name}" "${archive}" --namespace "${namespace}" \
+        -f "${out}/values/${values_name}.yaml" >"${work}/${values_name}-${name}.yaml" 2>"${work}/template.log"; then
+      pass "${name}: ${values_name} values pass the chart schema"
+    else
+      cat "${work}/lint.log" "${work}/template.log" >&2
+      fail "${name}: ${values_name} values rejected by the chart"
+    fi
+  done
+  if [[ -f "${work}/github-oidc-exchange-${name}.yaml" ]]; then
+    ref="$(jq -r '.products["github-oidc-exchange"].images.exchange' "${bom}")"
+    if grep -Fq "${ref}" "${work}/github-oidc-exchange-${name}.yaml"; then
+      pass "${name}: github-oidc-exchange renders the BOM image digest"
+    else
+      fail "${name}: github-oidc-exchange does not render ${ref}"
+    fi
+  fi
+  if [[ -f "${work}/envoy-gateway-${name}.yaml" ]]; then
+    for component in controller proxy; do
+      ref="$(jq -r ".dependencies[\"envoy-gateway\"].images.${component}" "${bom}")"
+      if grep -Fq "${ref}" "${work}/envoy-gateway-${name}.yaml"; then
+        pass "${name}: envoy-gateway renders the BOM ${component} image"
+      else
+        fail "${name}: envoy-gateway does not render ${ref}"
+      fi
+    done
+    if grep -q 'kind: CustomResourceDefinition' "${work}/envoy-gateway-${name}.yaml"; then
+      fail "${name}: envoy-gateway still renders its bundled CRDs"
+    fi
+  fi
 }
 
 for values in "${repo_root}"/environments/*/platform-values.yaml; do
@@ -147,18 +206,37 @@ if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
       fail "${name}: helmfile build failed"
       continue
     fi
-    for pinned in '.products.steward.chart' '.dependencies["cert-manager"].chart'; do
+    # release <TAB> BOM chart, and whether the environment must install it.
+    profile="$(yq -r .profile "${values}")"
+    while IFS=$'\t' read -r release pinned profiles; do
       expected="$(jq -r "${pinned} | \"\\(.reference)@\\(.digest)\"" "${bom}")"
-      release="$(jq -r "${pinned}.reference | split(\"/\") | last" "${bom}")"
       actual="$(yq -r "select(.releases) | .releases[] | select(.name == \"${release}\") | .chart" "${work}/helmfile-${name}.yaml")"
       if [[ -z "${actual}" ]]; then
+        [[ " ${profiles} " == *" ${profile} "* ]] && fail "${name}: helmfile does not install ${release}"
         continue
       elif [[ "${actual}" == "${expected}" ]]; then
         pass "${name}: helmfile installs ${release} at the BOM digest"
       else
         fail "${name}: helmfile installs ${release} from ${actual}, BOM pins ${expected}"
       fi
-    done
+    done <<'RELEASES'
+steward	.products.steward.chart	core task-auth
+cert-manager	.dependencies["cert-manager"].chart	core task-auth
+github-oidc-exchange	.products["github-oidc-exchange"].chart	task-auth
+envoy-gateway	.dependencies["envoy-gateway"].chart	task-auth
+RELEASES
+    # task-auth: the Gateway API and Envoy Gateway CRDs are the BOM manifests,
+    # which a presync hook applies before the envoy-gateway release.
+    if [[ "${profile}" == task-auth ]]; then
+      hook="$(yq -o=json -I=0 'select(.releases) | .releases[] | select(.name == "envoy-gateway") | .hooks[]
+          | select((.events | contains(["presync"])) and .command == "../scripts/apply-manifests.sh") | .args' \
+          "${work}/helmfile-${name}.yaml")"
+      if jq -e 'index("gateway-api-crds") and index("envoy-gateway")' <<<"${hook:-null}" >/dev/null 2>&1; then
+        pass "${name}: helmfile applies the BOM CRD manifests before envoy-gateway"
+      else
+        fail "${name}: the envoy-gateway release does not apply the BOM CRD manifests first"
+      fi
+    fi
     if helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
       template > "${work}/helmfile-template-${name}.yaml" 2>"${work}/helmfile.log"; then
       pass "${name}: helmfile renders every release"
@@ -171,8 +249,8 @@ fi
 
 # Inputs the generator must refuse.
 reject() {
-  local label="$1" expression="$2" expected="$3" input="${work}/reject.yaml"
-  yq "${expression}" "${repo_root}/environments/kind/platform-values.yaml" > "${input}"
+  local label="$1" expression="$2" expected="$3" base="${4:-kind}" input="${work}/reject.yaml"
+  yq "${expression}" "${repo_root}/environments/${base}/platform-values.yaml" > "${input}"
   if "${generate}" --out "${work}/reject-out" "${input}" >"${work}/reject.log" 2>&1; then
     fail "rejects ${label}: generator accepted it"
   elif grep -Fq "${expected}" "${work}/reject.log"; then
@@ -192,6 +270,23 @@ cat "${work}/customer/webhook-ca.pem" "${work}/customer/ca.key" > "${work}/custo
 reject "a private key in the CA bundle" \
   '.tls = {"mode": "customerSecret", "customerSecret": {"caBundleFile": "'"${work}"'/customer/with-key.pem"}}' \
   "contains a private key"
+reject "task-auth fields in the core profile" \
+  '.edge = {"install": true}' "does not match"
+reject "the task-auth profile without its edge" \
+  'del(.edge)' "does not match" kind-task-auth
+reject "a reserved field in the task-auth profile" \
+  '.publicEndpoints.mintIssuer = "https://mint.platform.test"' \
+  "publicEndpoints.mintIssuer is reserved for governed mode" kind-task-auth
+reject "a task API audience the exchange cannot issue" \
+  '.audiences.taskApi = "other-audience"' "does not match" kind-task-auth
+reject "a public origin with a path" \
+  '.publicEndpoints.steward = "https://steward.platform.test/api"' "does not match" kind-task-auth
+reject "the evaluation Gateway in production" \
+  '.purpose = "production" | .database.source = "operator" | .tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}}' \
+  "does not match" kind-task-auth
+reject "the evaluation Gateway without the evaluation Steward CA" \
+  '.tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}}' \
+  "edge.gateway.source evaluation needs" kind-task-auth
 
 if [[ "${failures}" != 0 ]]; then
   echo "${failures} generator checks failed" >&2

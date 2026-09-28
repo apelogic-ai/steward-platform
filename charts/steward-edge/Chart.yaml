@@ -1,0 +1,11 @@
+apiVersion: v2
+name: steward-edge
+description: >-
+  Routes Steward's task API through an existing Gateway API Gateway: an
+  HTTPRoute for the protected-resource metadata and /v1, and a
+  BackendTLSPolicy that verifies the Steward API certificate. For installs
+  without Steward's browser web UI, whose own HTTPRoute interface requires it.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.32.0-0"
+home: https://github.com/apelogic-ai/steward-platform

@@ -8,9 +8,11 @@ into per-chart values and helmfile inputs.
 - Schema: [`schemas/platform-values/v1.schema.json`](../schemas/platform-values/v1.schema.json)
 - Examples:
   [`environments/kind/platform-values.yaml`](../environments/kind/platform-values.yaml)
-  (evaluation on kind) and
+  (core, evaluation on kind),
+  [`environments/kind-task-auth/platform-values.yaml`](../environments/kind-task-auth/platform-values.yaml)
+  (task-auth, evaluation on kind) and
   [`environments/production/platform-values.yaml`](../environments/production/platform-values.yaml)
-  (production shape)
+  (core, production shape)
 
 The generator sets only the chart keys listed below. Each product chart
 remains the authority for what its keys mean; follow the links.
@@ -31,7 +33,11 @@ writes `generated/<environment>/`:
 | `values/cert-manager.yaml` | cert-manager chart, when `tls.certManager.install` is true |
 | `values/evaluation-ca.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca), when the evaluation issuer is used |
 | `values/postgresql-evaluation.yaml` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation), when the evaluation database is used |
-| `flux/` | Flux `OCIRepository` and `HelmRelease` objects for the same install, when no evaluation piece is used. [`examples/flux/core`](../examples/flux/core) is this output for the production example. |
+| `values/github-oidc-exchange.yaml` | github-oidc-exchange chart (task-auth) |
+| `values/steward-edge.yaml` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API routes and BackendTLSPolicy (task-auth) |
+| `values/envoy-gateway.yaml` | Envoy Gateway, without its bundled CRDs (task-auth, when `edge.install` is true). The helmfile applies the BOM's CRD manifests first. |
+| `values/edge-evaluation-ca.yaml`, `values/evaluation-edge.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca) again, for the edge, and [`charts/evaluation-edge`](../charts/evaluation-edge): the evaluation Gateway (task-auth, when `edge.gateway.source` is `evaluation`) |
+| `flux/` | Flux `OCIRepository` and `HelmRelease` objects for the same install, for the core profile when no evaluation piece is used. [`examples/flux/core`](../examples/flux/core) is this output for the production example. Flux output for task-auth is not generated yet. |
 
 The same inputs always give the same bytes. `generated/` is not committed;
 regenerate it after changing the values file or the BOM.
@@ -44,14 +50,15 @@ Tools: `jq` 1.7 or later, [yq](https://github.com/mikefarah/yq) v4 and
 ## Fields
 
 `purpose` is `evaluation` or `production`. Production forbids the evaluation
-database and the evaluation CA; the schema rejects the combination.
+database, the evaluation CA and the evaluation Gateway; the schema rejects the
+combination.
 
 ### Implemented (core)
 
 | Field | Sets | Notes |
 |---|---|---|
 | `environment` | helmfile environment and output directory | |
-| `profile` | which BOM profile to install | `core` only; `governed` is refused until [#3](https://github.com/apelogic-ai/steward-platform/issues/3) |
+| `profile` | which BOM profile to install | `core` or `task-auth`; `governed` is refused until [#3](https://github.com/apelogic-ai/steward-platform/issues/3) |
 | `cluster.domain` | Steward `services.clusterDomain`; evaluation database URL | |
 | `cluster.serviceAccountTokenAudience` | Steward `config.apiserver.kubernetesTokenReviewAudience` | The cluster's service account issuer. On kind it is not the chart default. |
 | `cluster.dnsNamespace` | Steward `networkPolicy.dnsNamespace` | |
@@ -76,6 +83,33 @@ defined by its chart:
 [schema](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.schema.json),
 [chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md).
 
+### Implemented (task-auth)
+
+The [task-auth profile](profiles/task-auth.md) uses every core field, and
+these. The schema requires them for `profile: task-auth` and forbids them for
+`profile: core`.
+
+| Field | Sets | Notes |
+|---|---|---|
+| `publicEndpoints.steward` | Steward `taskIdentity.resource`; the hostname of the Steward task API route | An origin with no port or path. steward-run takes it as its Steward API URL and checks that the protected-resource metadata names it. |
+| `publicEndpoints.identityIssuer` | github-oidc-exchange `config.issuerUrl`; Steward `taskIdentity.issuer`; the exchange route hostname | Steward matches the issuer exactly. |
+| `audiences.taskApi` | github-oidc-exchange `config.outputAudience`; Steward `taskIdentity.audience` | The exchange chart fixes it to `steward-task-api`. |
+| `namespaces.identityExchange` | github-oidc-exchange release namespace | The policy ConfigMap and keyring Secret live here. |
+| `serviceAccounts.identityExchange` | github-oidc-exchange `serviceAccount.annotations` | |
+| `networkPolicy.edgeNamespace` | added to Steward `networkPolicy.apiserverIngressNamespaces`; Envoy Gateway's namespace when `edge.install` | Steward's chart `networkPolicy.ingressNamespace` applies only with its web UI enabled, so the edge is admitted as a direct API caller. |
+| `edge.install` | whether the reference install installs the BOM-pinned Gateway API CRDs and Envoy Gateway | |
+| `edge.gateway` | the `parentRefs` of every route | `source: evaluation` creates an Envoy Gateway `GatewayClass` and `Gateway` with a certificate from a self-signed edge CA (evaluation only). `operator` attaches to your Gateway, which must allow routes from the Steward and exchange namespaces. |
+| `edge.clientCidrs` | github-oidc-exchange `networkPolicy.ingressCidrs` | The edge data plane's source addresses. |
+| `edge.stewardBackendCaConfigMap` | the Steward BackendTLSPolicy CA | The evaluation Gateway publishes it; otherwise your trust distribution must, as [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md) describes. |
+| `identityExchange.githubAudience` | github-oidc-exchange `config.githubExchangeAudience` | Clients discover it from the issuer metadata. |
+| `identityExchange.policy` | github-oidc-exchange `config.policyContract`, `config.policyConfigMapName`, `rolloutRevisions.githubPolicy`; Steward `taskIdentity.federatedSubjects.enabled` (true for v6) | The ConfigMap is yours to create; see the exchange's [integration guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.1/docs/integration.md). |
+| `identityExchange.keyring` | github-oidc-exchange `config.keyringSecretName`, `rolloutRevisions.githubKeyring` | The Secret is yours to create. |
+| `identityExchange.publicJwksConfigMap` | Steward `taskIdentity.publicJwksConfigMap` | The exchange's public JWKS (`keyring-tool export-jwks`), in the Steward namespace. Steward does not fetch the issuer's JWKS. |
+
+The Steward edge route comes from [`charts/steward-edge`](../charts/steward-edge),
+not from Steward's own `web.httpRoute`, because that interface requires
+Steward's browser web UI and therefore browser login.
+
 ### Reserved for governed mode
 
 These fields are in the schema so the file keeps its shape when governed mode
@@ -86,13 +120,11 @@ sets any of them. Generation is tracked in
 
 | Field | Must agree across |
 |---|---|
-| `publicEndpoints.steward` | Steward browser origin, web host and task-token resource; steward-run's Steward URL |
-| `publicEndpoints.identityIssuer` | github-oidc-exchange issuer; Steward `taskIdentity.issuer`; steward-run workflow input |
 | `publicEndpoints.mintIssuer` | Steward Mint; mcp-gw and the inference proxy |
 | `publicEndpoints.mcpGateway` | mcp-gw; Steward MCP gateway endpoint and connections origin |
-| `audiences.*` | task token, Mint token, Mint SVID and Mint control-plane audiences, between each issuer and its verifiers |
+| `audiences.mint`, `.mintSvid`, `.mintControlPlane` | Mint token, Mint SVID and Mint control-plane audiences, between each issuer and its verifiers |
 | `spiffe.trustDomain` | SPIRE, Steward Mint, github-oidc-exchange workload exchange |
-| `namespaces.identityExchange`, `.mcpGateway`, `.runners`, `.litellm`, `.openshell`, `.spire`, `.runtimes` | every chart's NetworkPolicy and service URLs |
-| `serviceAccounts.steward.mint`, `.identityExchange`, `.mcpGateway` | workload identities that peers trust |
-| `networkPolicy.edgeNamespace`, `networkPolicy.egressCidrs.*` | Steward and peer NetworkPolicies |
+| `namespaces.mcpGateway`, `.runners`, `.litellm`, `.openshell`, `.spire`, `.runtimes` | every chart's NetworkPolicy and service URLs |
+| `serviceAccounts.steward.mint`, `.mcpGateway` | workload identities that peers trust |
+| `networkPolicy.egressCidrs.*` | Steward and peer NetworkPolicies |
 | `browserAuth.google.*` | Steward browser login. `organizationId` follows the Steward chart's rule: `org_` followed by up to 60 lowercase letters, digits, `_` or `-`. |

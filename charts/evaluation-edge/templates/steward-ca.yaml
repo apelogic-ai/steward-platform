@@ -1,0 +1,25 @@
+{{- /*
+The public half of the evaluation Steward CA, for the Steward BackendTLSPolicy.
+Helm reads the CA Secret when it installs or upgrades against a cluster; an
+offline render (helm template) has no cluster and renders nothing here. The
+ConfigMap is a snapshot: re-sync after the evaluation CA rotates. Production
+publishes this ConfigMap with its own trust distribution instead.
+*/ -}}
+{{- $online := lookup "v1" "Namespace" "" "kube-system" }}
+{{- if $online }}
+{{- $secret := lookup "v1" "Secret" .Values.stewardCa.namespace .Values.stewardCa.secretName }}
+{{- $ca := dig "data" "tls.crt" "" $secret | b64dec }}
+{{- if not (contains "BEGIN CERTIFICATE" $ca) }}
+{{- fail (printf "the evaluation Steward CA Secret %s/%s has no certificate yet; install Steward first" .Values.stewardCa.namespace .Values.stewardCa.secretName) }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.stewardCa.configMapName }}
+  namespace: {{ .Values.stewardCa.namespace }}
+  labels:
+    app.kubernetes.io/name: evaluation-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  ca.crt: {{ $ca | quote }}
+{{- end }}

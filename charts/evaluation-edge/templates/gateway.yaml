@@ -1,0 +1,85 @@
+# Envoy proxies behind a ClusterIP Service: kind has no load balancer, and the
+# evaluation edge is reached through a port-forward.
+# https://gateway.envoyproxy.io/docs/api/extension_types/#envoyproxy
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ .Values.gatewayClassName }}
+  labels:
+    app.kubernetes.io/name: evaluation-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gatewayClassName }}
+  labels:
+    app.kubernetes.io/name: evaluation-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  controllerName: {{ .Values.controllerName }}
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: {{ .Values.gatewayClassName }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.gateway.name }}-tls
+  labels:
+    app.kubernetes.io/name: evaluation-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  secretName: {{ .Values.gateway.name }}-tls
+  dnsNames:
+    {{- range .Values.hostnames }}
+    - {{ . | quote }}
+    {{- end }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ .Values.issuerName }}
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name }}
+  labels:
+    app.kubernetes.io/name: evaluation-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  gatewayClassName: {{ .Values.gatewayClassName }}
+  listeners:
+    - name: {{ .Values.gateway.listener }}
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ .Values.gateway.name }}-tls
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- range .Values.routeNamespaces }}
+                  - {{ . | quote }}
+                  {{- end }}

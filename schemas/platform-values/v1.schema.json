@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/apelogic-ai/steward-platform/main/schemas/platform-values/v1.schema.json",
   "title": "Steward platform values, v1",
-  "description": "The one operator input for a platform install. It holds the values that several charts must agree on: namespaces, service account identities, cluster addresses, TLS, the database, public origins, audiences and the SPIFFE trust domain. scripts/generate.sh combines it with bom/bom.json into per-chart values and helmfile inputs. Fields marked x-reserved belong to governed mode; they are part of the design so that the file does not change shape later, but the v1 generator rejects them until governed mode lands.",
+  "description": "The one operator input for a platform install. It holds the values that several charts must agree on: namespaces, service account identities, cluster addresses, TLS, the database, public origins, audiences and the SPIFFE trust domain. scripts/generate.sh combines it with bom/bom.json into per-chart values and helmfile inputs. Fields marked x-reserved belong to governed mode; they are part of the design so that the file does not change shape later, but the v1 generator rejects them until governed mode lands. The task-auth profile implements the fields it needs: the public Steward origin and issuer, the task API audience, the github-oidc-exchange namespace and service account, the edge and the exchange's own settings.",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "environment", "purpose", "profile", "cluster", "namespaces", "tls", "database"],
@@ -22,8 +22,8 @@
       "enum": ["evaluation", "production"]
     },
     "profile": {
-      "description": "Install profile from the BOM. The v1 generator implements core only.",
-      "enum": ["core", "governed"]
+      "description": "Install profile from the BOM. The v1 generator implements core and task-auth.",
+      "enum": ["core", "task-auth", "governed"]
     },
     "cluster": {
       "description": "Facts about the target cluster that chart values depend on.",
@@ -71,7 +71,7 @@
           "description": "cert-manager, when the reference install installs it.",
           "$ref": "#/$defs/dnsLabel"
         },
-        "identityExchange": { "$ref": "#/$defs/reservedDnsLabel", "description": "github-oidc-exchange. Reserved for governed mode." },
+        "identityExchange": { "$ref": "#/$defs/dnsLabel", "description": "github-oidc-exchange, and the policy ConfigMap and keyring Secret it reads. task-auth profile." },
         "mcpGateway": { "$ref": "#/$defs/reservedDnsLabel", "description": "mcp-gw. Reserved for governed mode." },
         "runners": { "$ref": "#/$defs/reservedDnsLabel", "description": "steward-run runner scale set. Reserved for governed mode." },
         "litellm": { "$ref": "#/$defs/reservedDnsLabel", "description": "Inference proxy. Reserved for governed mode." },
@@ -105,8 +105,7 @@
           }
         },
         "identityExchange": {
-          "description": "Reserved for governed mode.",
-          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+          "description": "github-oidc-exchange. Its name is fixed by the chart. task-auth profile.",
           "$ref": "#/$defs/serviceAccount"
         },
         "mcpGateway": {
@@ -265,8 +264,8 @@
           "items": { "$ref": "#/$defs/dnsLabel" }
         },
         "edgeNamespace": {
-          "description": "Namespace of the ingress or Gateway implementation that fronts the Steward browser UI and API. Reserved for governed mode.",
-          "$ref": "#/$defs/reservedDnsLabel"
+          "description": "Namespace where the edge's data plane runs (for Envoy Gateway, its controller namespace, where it creates the Envoy proxies). Steward's API NetworkPolicy admits it. When edge.install is true, the reference install installs Envoy Gateway here. task-auth profile.",
+          "$ref": "#/$defs/dnsLabel"
         },
         "egressCidrs": {
           "description": "Literal CIDRs for external peers. Reserved for governed mode.",
@@ -282,39 +281,136 @@
       }
     },
     "publicEndpoints": {
-      "description": "Public HTTPS origins and issuer URLs. Several charts must carry the exact same string, so each is set once here. Reserved for governed mode.",
-      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "description": "Public HTTPS origins and issuer URLs. Several charts must carry the exact same string, so each is set once here.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "steward": {
-          "description": "Steward browser and API origin: Steward's browser origin, web host and task-token resource; the steward-run API URL.",
-          "$ref": "#/$defs/httpsOrigin"
+          "description": "Steward API origin: Steward's task-token resource (taskIdentity.resource), the edge hostname of Steward's API routes, and the steward-run API URL. task-auth profile.",
+          "$ref": "#/$defs/httpsOriginOnly"
         },
         "identityIssuer": {
-          "description": "github-oidc-exchange issuer: its own issuer setting, Steward's taskIdentity.issuer, and the steward-run workflow input.",
-          "$ref": "#/$defs/httpsOrigin"
+          "description": "github-oidc-exchange issuer: its own issuer setting, Steward's taskIdentity.issuer, and the edge hostname of the exchange's routes. task-auth profile.",
+          "$ref": "#/$defs/httpsOriginOnly"
         },
         "mintIssuer": {
-          "description": "Steward Mint token issuer, which mcp-gw and the inference proxy trust.",
+          "description": "Steward Mint token issuer, which mcp-gw and the inference proxy trust. Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
           "$ref": "#/$defs/httpsOrigin"
         },
         "mcpGateway": {
-          "description": "mcp-gw origin: Steward's MCP gateway endpoint and connections origin.",
+          "description": "mcp-gw origin: Steward's MCP gateway endpoint and connections origin. Reserved for governed mode.",
+          "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
           "$ref": "#/$defs/httpsOrigin"
         }
       }
     },
     "audiences": {
-      "description": "Token audiences that an issuer and its verifiers must agree on. Reserved for governed mode.",
-      "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3",
+      "description": "Token audiences that an issuer and its verifiers must agree on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "taskApi": { "type": "string", "minLength": 1, "description": "Task tokens issued by github-oidc-exchange and accepted by Steward." },
-        "mint": { "type": "string", "minLength": 1, "description": "Mint tokens accepted by mcp-gw and the inference proxy." },
-        "mintSvid": { "type": "string", "minLength": 1, "description": "SPIFFE SVIDs presented to Mint." },
-        "mintControlPlane": { "type": "string", "minLength": 1, "description": "Steward control-plane tokens presented to Mint." }
+        "taskApi": {
+          "description": "Task tokens issued by github-oidc-exchange (config.outputAudience) and accepted by Steward (taskIdentity.audience). The github-oidc-exchange 0.7.1 chart fixes it to steward-task-api. task-auth profile.",
+          "const": "steward-task-api"
+        },
+        "mint": { "type": "string", "minLength": 1, "description": "Mint tokens accepted by mcp-gw and the inference proxy. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" },
+        "mintSvid": { "type": "string", "minLength": 1, "description": "SPIFFE SVIDs presented to Mint. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" },
+        "mintControlPlane": { "type": "string", "minLength": 1, "description": "Steward control-plane tokens presented to Mint. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" }
+      }
+    },
+    "edge": {
+      "description": "The HTTPS edge (Gateway API) in front of Steward's task API and the github-oidc-exchange issuer. task-auth profile.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["install", "gateway", "clientCidrs", "stewardBackendCaConfigMap"],
+      "properties": {
+        "install": {
+          "description": "Install the BOM-pinned Gateway API CRDs and Envoy Gateway into networkPolicy.edgeNamespace. Set false when the cluster already runs a Gateway API implementation that supports BackendTLSPolicy.",
+          "type": "boolean"
+        },
+        "gateway": {
+          "description": "The Gateway whose HTTPS listener serves both public hostnames.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "name", "namespace", "listener"],
+          "properties": {
+            "source": {
+              "description": "evaluation: the reference install creates an Envoy Gateway GatewayClass and this Gateway, with a listener certificate from a self-signed edge CA (evaluation purpose only; needs edge.install and the evaluation Steward CA). operator: the routes attach to the operator's existing Gateway.",
+              "enum": ["evaluation", "operator"]
+            },
+            "name": { "$ref": "#/$defs/dnsSubdomain" },
+            "namespace": { "$ref": "#/$defs/dnsLabel" },
+            "listener": {
+              "description": "The listener (sectionName) that terminates HTTPS for both hostnames.",
+              "$ref": "#/$defs/dnsLabel"
+            }
+          }
+        },
+        "clientCidrs": {
+          "description": "Source addresses of the edge data plane as github-oidc-exchange sees them; its NetworkPolicy admits only these (the chart's networkPolicy.ingressCidrs). On kind, the pod subnet.",
+          "$ref": "#/$defs/cidrs"
+        },
+        "stewardBackendCaConfigMap": {
+          "description": "ConfigMap in the Steward namespace whose ca.crt is the public CA that verifies the Steward API certificate. The edge's BackendTLSPolicy references it. The evaluation Gateway creates it from the evaluation CA; otherwise the operator's trust distribution (for example trust-manager) must publish it.",
+          "$ref": "#/$defs/dnsSubdomain"
+        }
+      }
+    },
+    "identityExchange": {
+      "description": "github-oidc-exchange settings that no other chart shares. The policy ConfigMap and keyring Secret are operator-owned: the chart only references them. task-auth profile.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubAudience", "policy", "keyring", "publicJwksConfigMap"],
+      "properties": {
+        "githubAudience": {
+          "description": "Audience that GitHub Actions OIDC tokens must carry to be exchanged (the chart's config.githubExchangeAudience). Clients read it from the issuer's discovery metadata.",
+          "type": "string",
+          "pattern": "^[!-~]{1,255}$"
+        },
+        "policy": {
+          "description": "The exchange policy. v6 issues steward-task-v3 tokens, which need Steward's federated subjects; the generator turns them on for v6.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contract", "configMapName", "revision"],
+          "properties": {
+            "contract": { "enum": ["github-oidc-exchange.apelogic.io/v5", "github-oidc-exchange.apelogic.io/v6"] },
+            "configMapName": {
+              "description": "ConfigMap in namespaces.identityExchange with the policy at key policy.json.",
+              "$ref": "#/$defs/dnsSubdomain"
+            },
+            "revision": {
+              "description": "Change it whenever the policy ConfigMap changes; the exchange reads the policy only at startup.",
+              "$ref": "#/$defs/rolloutRevision"
+            }
+          }
+        },
+        "keyring": {
+          "description": "The ES256 signing keyring.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["secretName", "revision"],
+          "properties": {
+            "secretName": {
+              "description": "Secret in namespaces.identityExchange with the keyring at key keyring.json.",
+              "$ref": "#/$defs/dnsSubdomain"
+            },
+            "revision": {
+              "description": "Change it whenever the keyring Secret changes.",
+              "$ref": "#/$defs/rolloutRevision"
+            }
+          }
+        },
+        "publicJwksConfigMap": {
+          "description": "ConfigMap in the Steward namespace with the exchange's public JWKS (keyring-tool export-jwks), which Steward verifies task tokens against (taskIdentity.publicJwksConfigMap). Steward does not fetch the issuer's JWKS; publish every overlapping key here before the exchange signs with it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "$ref": "#/$defs/dnsSubdomain" },
+            "key": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+          }
+        }
       }
     },
     "spiffe": {
@@ -366,6 +462,34 @@
   },
   "allOf": [
     {
+      "description": "The task-auth profile needs the edge, the public endpoints and the exchange settings.",
+      "if": { "properties": { "profile": { "const": "task-auth" } } },
+      "then": {
+        "required": ["publicEndpoints", "audiences", "edge", "identityExchange"],
+        "properties": {
+          "publicEndpoints": { "required": ["steward", "identityIssuer"] },
+          "audiences": { "required": ["taskApi"] },
+          "namespaces": { "required": ["identityExchange"] },
+          "networkPolicy": { "required": ["edgeNamespace"] }
+        }
+      }
+    },
+    {
+      "description": "The core profile has no edge and no exchange.",
+      "if": { "properties": { "profile": { "const": "core" } } },
+      "then": {
+        "not": { "anyOf": [
+          { "required": ["publicEndpoints"] },
+          { "required": ["audiences"] },
+          { "required": ["edge"] },
+          { "required": ["identityExchange"] },
+          { "required": ["namespaces"], "properties": { "namespaces": { "required": ["identityExchange"] } } },
+          { "required": ["serviceAccounts"], "properties": { "serviceAccounts": { "required": ["identityExchange"] } } },
+          { "required": ["networkPolicy"], "properties": { "networkPolicy": { "required": ["edgeNamespace"] } } }
+        ] }
+      }
+    },
+    {
       "description": "Production never uses the evaluation pieces.",
       "if": { "properties": { "purpose": { "const": "production" } } },
       "then": {
@@ -375,7 +499,8 @@
             "properties": {
               "certManager": { "properties": { "issuer": { "properties": { "source": { "const": "operator" } } } } }
             }
-          }
+          },
+          "edge": { "properties": { "gateway": { "properties": { "source": { "const": "operator" } } } } }
         }
       }
     }
@@ -413,6 +538,15 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/cidr" }
+    },
+    "httpsOriginOnly": {
+      "description": "Exact HTTPS origin: scheme and host, with no port, path or trailing slash. It doubles as an edge hostname.",
+      "type": "string",
+      "pattern": "^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "rolloutRevision": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
     },
     "httpsOrigin": {
       "description": "Exact HTTPS origin or issuer URL, without a trailing slash.",

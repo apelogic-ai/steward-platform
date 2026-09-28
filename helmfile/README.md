@@ -12,6 +12,11 @@ values. Charts from the BOM are installed by digest.
 | `evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca): self-signed CA `Issuer` | evaluation only |
 | `postgresql-evaluation` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation): the BOM PostgreSQL image, no persistence or TLS | evaluation only |
 | `steward` | BOM `products.steward.chart`, by digest | all |
+| `envoy-gateway` | BOM `dependencies.envoy-gateway.chart`, by digest, without its bundled CRDs. A presync hook first runs [`scripts/apply-manifests.sh`](../scripts/apply-manifests.sh): the BOM's Gateway API (standard channel) and Envoy Gateway CRD manifests, checked by digest and server-side applied against `PLATFORM_KUBE_CONTEXT` or the current context | task-auth, when `edge.install` is true |
+| `edge-evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca) in the Gateway namespace: the edge listener CA | task-auth evaluation only |
+| `evaluation-edge` | [`charts/evaluation-edge`](../charts/evaluation-edge): evaluation `GatewayClass`, `Gateway` and the public Steward CA `ConfigMap` | task-auth evaluation only |
+| `steward-edge` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API `HTTPRoute` and `BackendTLSPolicy` | task-auth |
+| `github-oidc-exchange` | BOM `products.github-oidc-exchange.chart`, by digest | task-auth |
 
 The order comes from `needs`: cert-manager, then the evaluation pieces, then
 Steward. For where this fits in the whole platform, see

@@ -1,0 +1,14 @@
+# Public Steward API hostname: the host of Steward's taskIdentity.resource.
+hostname: ""
+# Gateway listeners to attach to: [{name, namespace, sectionName}]. The
+# Gateway must allow routes from this release's namespace.
+parentRefs: []
+backendTls:
+  # Steward API Service DNS identity, which its certificate carries:
+  # steward-apiserver.<namespace>.svc.<cluster domain>.
+  hostname: ""
+  # ConfigMap in this namespace whose ca.crt is the public CA that issued the
+  # Steward API certificate. Public trust material only.
+  caConfigMapName: ""
+# Steward's apiserver Service port (the Steward chart's services.apiserverPort).
+apiserverPort: 443
