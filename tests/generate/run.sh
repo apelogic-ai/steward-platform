@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests for scripts/generate.sh. No cluster needed.
 #
-# For every environments/*/platform-values.yaml, and for a customerSecret TLS
-# variant built here, check that:
+# For every environments/*/platform-values.yaml, for a customerSecret TLS
+# variant and for a kind variant per tested PostgreSQL version built here,
+# check that:
 #   - the generator output is deterministic;
 #   - the generated values pass `helm lint` and `helm template` with the
 #     BOM-pinned charts, pulled by digest, so each chart's values schema applies;
@@ -277,6 +278,28 @@ else
   fail "customer-secret: the CA bundle file is not embedded"
 fi
 
+# The evaluation database at each tested PostgreSQL version, named by its
+# major version, runs that version's BOM image; without evaluationVersion it
+# runs the BOM default.
+postgres_image() { yq -r '.image | "\(.repository):\(.tag)@\(.digest)"' "${work}/out/$1/values/postgresql-evaluation.yaml"; }
+if [[ "$(postgres_image kind)" == "$(jq -r .dependencies.postgresql.images.postgres "${bom}")" ]]; then
+  pass "kind: evaluation PostgreSQL runs the BOM default image"
+else
+  fail "kind: evaluation PostgreSQL runs $(postgres_image kind), not the BOM default"
+fi
+while IFS=$'\t' read -r version ref; do
+  name="kind-postgresql-${version%%.*}"
+  mkdir -p "${work}/${name}"
+  yq ".database.evaluationVersion = \"${version%%.*}\"" \
+    "${repo_root}/environments/kind/platform-values.yaml" > "${work}/${name}/platform-values.yaml"
+  check_environment "${name}" "${work}/${name}/platform-values.yaml"
+  if [[ "$(postgres_image "${name}")" == "${ref}" ]]; then
+    pass "${name}: evaluation PostgreSQL runs the BOM image of tested ${version}"
+  else
+    fail "${name}: evaluation PostgreSQL runs $(postgres_image "${name}"), not ${ref}"
+  fi
+done < <(jq -r '.dependencies.postgresql.tested[] | [.version, .images.postgres] | @tsv' "${bom}")
+
 # The helmfile renders every committed environment, and installs each BOM
 # chart by its BOM digest.
 if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
@@ -359,6 +382,10 @@ reject "a reserved governed field" '.spiffe.trustDomain = "example.org"' "spiffe
 reject "a reserved namespace" '.namespaces.mcpGateway = "mcp-gw"' "namespaces.mcpGateway is reserved for governed mode"
 reject "the governed profile" '.profile = "governed"' "profile governed is not implemented yet"
 reject "evaluation PostgreSQL in production" '.purpose = "production"' "does not match"
+reject "an untested PostgreSQL version" '.database.evaluationVersion = "15"' "names 0 of the BOM's tested PostgreSQL versions"
+reject "a PostgreSQL version that is not a version" '.database.evaluationVersion = "latest"' "does not match"
+reject "an evaluation PostgreSQL version for an operator database" \
+  '.database.evaluationVersion = "17"' "does not match" production
 reject "an unknown field" '.clusterDomain = "cluster.local"' "does not match"
 reject "a hostname as a CIDR" '.database.cidrs = ["db.example.test"]' "does not match"
 cat "${work}/customer/webhook-ca.pem" "${work}/customer/ca.key" > "${work}/customer/with-key.pem"

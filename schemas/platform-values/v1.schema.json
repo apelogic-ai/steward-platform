@@ -205,8 +205,13 @@
       "required": ["source", "secret", "cidrs", "port"],
       "properties": {
         "source": {
-          "description": "evaluation: the reference install runs the BOM-pinned PostgreSQL in the Steward namespace, without TLS or persistence, and writes the database Secret (evaluation purpose only). operator: a separately operated PostgreSQL 16; the operator creates the database Secret.",
+          "description": "evaluation: the reference install runs the BOM-pinned PostgreSQL in the Steward namespace, without TLS or persistence, and writes the database Secret (evaluation purpose only). operator: a separately operated PostgreSQL, at or above the BOM's dependencies.postgresql.minVersion; the operator creates the database Secret.",
           "enum": ["evaluation", "operator"]
+        },
+        "evaluationVersion": {
+          "description": "evaluation source only: the PostgreSQL version the reference install runs, as a major version (\"17\") or an exact one; it must name exactly one entry of the BOM's dependencies.postgresql.tested. Default: the BOM's default version.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)){0,2}$"
         },
         "secret": {
           "description": "Secret in the Steward namespace whose key holds the database URL.",
@@ -250,7 +255,13 @@
             }
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "operator" } } },
+          "then": { "not": { "required": ["evaluationVersion"] } }
+        }
+      ]
     },
     "networkPolicy": {
       "description": "Cross-component NetworkPolicy inputs. Charts keep their NetworkPolicies on; these values open only what the platform needs.",
