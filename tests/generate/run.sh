@@ -19,6 +19,13 @@
 # committed environment with each BOM chart at its BOM digest (writes
 # generated/<environment>/; set SKIP_HELMFILE=1 to skip).
 #
+# Backward compatibility: the platform values files of every platform release
+# tag (git tags 20*) still validate against the current schema and generate,
+# and give byte-identical output, with the current BOM, to that tag's own
+# generator. An operator's existing platform values therefore keep working and
+# keep their install unchanged; new fields, such as registry, are optional.
+# Needs the tags in the checkout (CI fetches them); set SKIP_COMPAT=1 to skip.
+#
 # Usage: tests/generate/run.sh
 # Needs: jq, yq (mikefarah v4), check-jsonschema, helm, helmfile, openssl.
 set -euo pipefail
@@ -368,6 +375,18 @@ mirrored_variant() {
     return 1
   fi
 }
+# The registry block is the only difference between the mirrored environment
+# and production-task-auth: without it, the output is theirs, byte for byte
+# (the first header line names the input file).
+if out="$(mirrored_variant unset 'del(.registry) | .environment = "production-task-auth"')" \
+  && "${generate}" --out "${work}/variant-unset/base" \
+    "${repo_root}/environments/production-task-auth/platform-values.yaml" >/dev/null \
+  && diff -r <(cd "${out}" && find . -type f -name '*.yaml' | sort | while read -r f; do echo "== ${f}"; tail -n +2 "${f}"; done) \
+    <(cd "${work}/variant-unset/base" && find . -type f -name '*.yaml' | sort | while read -r f; do echo "== ${f}"; tail -n +2 "${f}"; done) >/dev/null; then
+  pass "mirrored: with the registry block unset, the output is production-task-auth's, byte for byte"
+else
+  fail "mirrored: with the registry block unset, the output differs from production-task-auth's"
+fi
 # A cloud provider identity for the dependency charts instead of a Secret.
 if out="$(mirrored_variant provider '.registry.dependencyCharts.flux = {"provider": "aws"}')" \
   && yq -e 'select(.kind == "OCIRepository") | .spec.provider == "aws" and (.spec | has("secretRef") | not)' \
@@ -506,6 +525,43 @@ RELEASES
       cat "${work}/helmfile.log" >&2
       fail "${name}: helmfile template failed"
     fi
+  done
+fi
+
+# Backward compatibility with every platform release.
+if [[ "${SKIP_COMPAT:-0}" != 1 ]]; then
+  command -v git >/dev/null || { echo "missing git (or set SKIP_COMPAT=1)" >&2; exit 2; }
+  tags="$(git -C "${repo_root}" tag --list '20*' --sort=version:refname)"
+  [[ -n "${tags}" ]] || { echo "no platform release tags in this checkout; fetch them (git fetch --tags) or set SKIP_COMPAT=1" >&2; exit 2; }
+  for tag in ${tags}; do
+    compat="${work}/compat/${tag}"
+    mkdir -p "${compat}/base" "${compat}/values"
+    git -C "${repo_root}" archive "${tag}" | tar -x -C "${compat}/base"
+    # The same BOM for both generators, at the same relative path, so that
+    # only the generators differ, headers included.
+    cp "${bom}" "${compat}/base/bom/bom.json"
+    for environment_dir in "${compat}"/base/environments/*/; do
+      [[ -f "${environment_dir}/platform-values.yaml" ]] || continue
+      name="$(basename "${environment_dir}")"
+      # Outside both checkouts, so both headers name it the same way.
+      cp -R "${environment_dir}" "${compat}/values/${name}"
+      values="${compat}/values/${name}/platform-values.yaml"
+      if ! "${generate}" --out "${compat}/new/${name}" "${values}" >"${work}/compat.log" 2>&1; then
+        cat "${work}/compat.log" >&2
+        fail "compat ${tag}: environments/${name} no longer validates or generates"
+        continue
+      fi
+      if ! "${compat}/base/scripts/generate.sh" --out "${compat}/old/${name}" "${values}" >"${work}/compat.log" 2>&1; then
+        echo "note compat ${tag}: the ${tag} generator cannot read the current BOM for environments/${name}; output not compared"
+        continue
+      fi
+      if diff -r "${compat}/old/${name}" "${compat}/new/${name}" >"${work}/compat.diff"; then
+        pass "compat ${tag}: environments/${name} validates, and generates byte-identically to the ${tag} generator"
+      else
+        head -40 "${work}/compat.diff" >&2
+        fail "compat ${tag}: environments/${name} generates differently from the ${tag} generator"
+      fi
+    done
   done
 fi
 
