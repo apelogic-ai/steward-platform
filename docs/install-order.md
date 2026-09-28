@@ -17,6 +17,8 @@ and proven by the [core end-to-end test](../tests/e2e/core/README.md). The
 | Profile | Installs | Needs |
 |---|---|---|
 | core | Steward API, admission webhook and controller; cert-manager for service TLS | PostgreSQL 16 |
+| task-auth | core plus github-oidc-exchange behind an Envoy Gateway edge | a GitHub Actions job that can reach the edge |
+| browser-admin | task-auth plus Steward's web UI and Google sign-in | a Google Workspace OAuth client |
 | governed | core plus steward-run, github-oidc-exchange, mcp-gw and the execution dependencies | everything in [prerequisites](prerequisites.md), including browser login |
 
 Core is the starting point even when governed execution is the goal: every
@@ -104,7 +106,34 @@ with the steward-run action. It stops before Envelope admission: that needs
 a Steward canonical user, which only a browser login creates (step 5 of the
 governed sequence below).
 
-## 7. Governed mode (outline)
+## 7. Browser administration (browser-admin profile)
+
+The [browser-admin profile](profiles/browser-admin.md) is step 6 plus
+Steward's web UI and Google Workspace sign-in. Before installing, add to the
+task-auth inputs:
+
+- a Google Cloud **Web application** OAuth client in your Workspace
+  organization, consent screen **Internal**, with the single redirect URI
+  `<publicEndpoints.steward>/admin/auth/callback`
+  ([local access](browser-admin/local-access.md#the-google-oauth-client));
+- the Secret holding its client secret, in the Steward namespace;
+- literal CIDRs for Steward's egress to Google on 443
+  (`networkPolicy.egressCidrs.browserAuth`).
+
+The generator then turns on Steward's `browserAuth`, web UI and its own
+`web.httpRoute` edge, with the full public API path list, and projects
+steward-run's release coordinates from the BOM. The helmfile installs Steward
+after Envoy Gateway, whose release applies the Gateway API CRDs Steward's
+routes need, and skips the API-only `steward-edge`. The
+[browser-admin end-to-end test](../tests/e2e/browser-admin/README.md) proves
+the install up to the redirect to Google.
+
+After install, the first administrator signs in once, is granted the role
+with `bootstrap-rbac`, and administers in the browser
+([first-admin runbook](browser-admin/first-admin.md),
+[walkthrough](browser-admin/walkthrough.md)).
+
+## 8. Governed mode (outline)
 
 Not yet a reference install; tracked in
 [#3](https://github.com/apelogic-ai/steward-platform/issues/3), which adds
@@ -124,8 +153,8 @@ and enrolling it late.
 
 ### Sequence
 
-1. **Core Steward**, with browser login and its HTTPS edge (steps 1 to 5
-   above, plus the reserved `publicEndpoints` and `browserAuth` values).
+1. **Core Steward**, with browser login and its HTTPS edge (steps 1 to 7
+   above).
 2. **github-oidc-exchange, not yet enrolled.** Install it so that its issuer
    URL and public JWKS exist; later steps need both. Its
    [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/installation.md)
