@@ -59,6 +59,13 @@ To bump a product:
 6. Open a pull request. CI repeats those checks and runs the end-to-end tests
    against the new BOM. Merge only when every check is green.
 
+A dependency manifest (`dependencies.<name>.manifests`) also carries a
+`fluxSource`: where the Flux output takes the same objects from, because Flux
+cannot fetch an HTTPS file checked by SHA-256. When you bump the manifest,
+update it too: the Git commit that the release tag names, or the directory in
+the dependency's chart. `tests/flux/run.sh` fails if the source, at its pin,
+does not hold exactly the objects of the manifest.
+
 To add or change a tested Kubernetes version, edit `kubernetes.tested`. The CI
 end-to-end matrix is generated from that list, so the BOM and the test coverage
 cannot drift apart.
