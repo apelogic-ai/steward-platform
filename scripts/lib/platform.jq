@@ -169,6 +169,81 @@ def helmfile_environment($bom):
       }
     };
 
+# --- Flux ---------------------------------------------------------------------
+
+# Flux objects live here; each HelmRelease installs into its own namespace.
+def flux_namespace: "flux-system";
+
+# OCIRepository for a BOM chart, pinned by digest. The layer selector picks the
+# chart archive (cert-manager also publishes a provenance layer).
+# https://fluxcd.io/flux/components/source/ocirepositories/
+def flux_oci_repository($name; $chart):
+  {
+    apiVersion: "source.toolkit.fluxcd.io/v1",
+    kind: "OCIRepository",
+    metadata: {name: $name, namespace: flux_namespace},
+    spec: {
+      interval: "1h",
+      url: $chart.reference,
+      ref: {digest: $chart.digest},
+      layerSelector: {
+        mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
+        operation: "copy"
+      }
+    }
+  };
+
+# https://fluxcd.io/flux/components/helm/helmreleases/
+def flux_helm_release($name; $namespace; $depends_on; $crds_on_upgrade; $values):
+  {
+    apiVersion: "helm.toolkit.fluxcd.io/v2",
+    kind: "HelmRelease",
+    metadata: {name: $name, namespace: flux_namespace},
+    spec: (
+      {
+        interval: "1h",
+        releaseName: $name,
+        targetNamespace: $namespace,
+        storageNamespace: $namespace,
+        chartRef: {kind: "OCIRepository", name: $name}
+      }
+      + (if ($depends_on | length) > 0 then {dependsOn: [$depends_on[] | {name: .}]} else {} end)
+      + {
+        install: {createNamespace: true, crds: "Create", remediation: {retries: 3}},
+        upgrade: {crds: $crds_on_upgrade, remediation: {retries: 3}},
+        values: $values
+      }
+    )
+  };
+
+# The Flux example covers the BOM charts only. Evaluation pieces are in-repo
+# charts that the helmfile installs; an environment that uses them gets no
+# Flux output.
+def flux_supported: (uses_evaluation_issuer or uses_evaluation_database) | not;
+
+def flux_files($bom; $ca_bundle):
+  . as $v
+  | (if $v | installs_cert_manager then
+      {"flux/cert-manager.yaml": [
+        flux_oci_repository("cert-manager"; $bom.dependencies["cert-manager"].chart),
+        flux_helm_release("cert-manager"; $v.namespaces.certManager; []; "Create"; cert_manager_values($bom))
+      ]}
+    else {} end)
+  + {"flux/steward.yaml": [
+      flux_oci_repository("steward"; $bom.products.steward.chart),
+      # Steward's CRD is in the chart's crds/ directory. Skip keeps Helm's
+      # behaviour: the CRD is upgraded deliberately, after reading the release
+      # notes (see helmfile/README.md).
+      flux_helm_release("steward"; $v.namespaces.steward;
+        (if $v | installs_cert_manager then ["cert-manager"] else [] end); "Skip";
+        ($v | steward_values($bom; $ca_bundle)))
+    ]}
+  | . + {"flux/kustomization.yaml": {
+      apiVersion: "kustomize.config.k8s.io/v1beta1",
+      kind: "Kustomization",
+      resources: [keys[] | select(. != "flux/kustomization.yaml") | ltrimstr("flux/")]
+    }};
+
 # --- Everything, keyed by output path ----------------------------------------
 
 def generate($bom; $ca_bundle):
@@ -177,4 +252,5 @@ def generate($bom; $ca_bundle):
      "values/steward.yaml": ($v | steward_values($bom; $ca_bundle))}
   + (if $v | installs_cert_manager then {"values/cert-manager.yaml": cert_manager_values($bom)} else {} end)
   + (if $v | uses_evaluation_issuer then {"values/evaluation-ca.yaml": evaluation_ca_values} else {} end)
-  + (if $v | uses_evaluation_database then {"values/postgresql-evaluation.yaml": ($v | postgresql_evaluation_values($bom))} else {} end);
+  + (if $v | uses_evaluation_database then {"values/postgresql-evaluation.yaml": ($v | postgresql_evaluation_values($bom))} else {} end)
+  + (if $v | flux_supported then $v | flux_files($bom; $ca_bundle) else {} end);

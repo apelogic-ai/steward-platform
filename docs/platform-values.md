@@ -31,6 +31,7 @@ writes `generated/<environment>/`:
 | `values/cert-manager.yaml` | cert-manager chart, when `tls.certManager.install` is true |
 | `values/evaluation-ca.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca), when the evaluation issuer is used |
 | `values/postgresql-evaluation.yaml` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation), when the evaluation database is used |
+| `flux/` | Flux `OCIRepository` and `HelmRelease` objects for the same install, when no evaluation piece is used. [`examples/flux/core`](../examples/flux/core) is this output for the production example. |
 
 The same inputs always give the same bytes. `generated/` is not committed;
 regenerate it after changing the values file or the BOM.
