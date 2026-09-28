@@ -2,7 +2,8 @@
 
 CI runs these checks on every pull request, on every push to `main`, and
 nightly. All of them run on GitHub-hosted `ubuntu-latest` (linux/amd64)
-runners. All of them run locally too; the end-to-end test needs an amd64 host.
+runners. You can run all of them locally; the end-to-end test needs an amd64
+host.
 
 | Check | Script | What it proves |
 |---|---|---|

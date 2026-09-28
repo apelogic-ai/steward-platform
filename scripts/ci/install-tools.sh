@@ -2,7 +2,7 @@
 # Install pinned CI tools into a directory and put it on the GitHub Actions PATH.
 # Each download is checked against a pinned SHA-256. Linux amd64 only.
 #
-# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, kind)
+# Usage: scripts/ci/install-tools.sh TOOL...   (TOOL: crane, helm, kind, kubectl)
 # Env:   TOOLS_DIR (default: ${RUNNER_TEMP}/tools/bin)
 set -euo pipefail
 
@@ -12,6 +12,9 @@ helm_version=v3.22.0
 helm_sha256=1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb
 kind_version=v0.31.0
 kind_sha256=eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+# Matches the highest tested Kubernetes minor in the BOM.
+kubectl_version=v1.34.3
+kubectl_sha256=ab60ca5f0fd60c1eb81b52909e67060e3ba0bd27e55a8ac147cbc2172ff14212
 
 if [[ "$(uname -s)/$(uname -m)" != Linux/x86_64 ]]; then
   echo "install-tools.sh supports Linux x86_64 only" >&2
@@ -51,6 +54,11 @@ for tool in "$@"; do
       fetch "https://github.com/kubernetes-sigs/kind/releases/download/${kind_version}/kind-linux-amd64" \
         "${kind_sha256}" "${work}/kind"
       install -m 0755 "${work}/kind" "${tools_dir}/kind"
+      ;;
+    kubectl)
+      fetch "https://dl.k8s.io/release/${kubectl_version}/bin/linux/amd64/kubectl" \
+        "${kubectl_sha256}" "${work}/kubectl"
+      install -m 0755 "${work}/kubectl" "${tools_dir}/kubectl"
       ;;
     *)
       echo "unknown tool ${tool}" >&2

@@ -98,7 +98,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install tools
-        run: scripts/ci/install-tools.sh kind helm
+        run: scripts/ci/install-tools.sh kind helm kubectl
       - name: Run core e2e from the BOM
         env:
           K8S_VERSION: ${{ matrix.k8s }}
