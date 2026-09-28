@@ -77,6 +77,10 @@ digest, with every chart's values generated from one
 - **Flux**: [examples/flux/core](examples/flux/core/README.md), the same
   install as `OCIRepository` and `HelmRelease` objects, generated from the BOM.
 
+Upgrading products installed before this repository existed? Follow the
+[migration runbook](docs/upgrades/from-pre-platform.md) to move them to the
+current BOM.
+
 ## What this repository owns, and what it does not
 
 **Products own their contracts.** API shapes, chart values, CRDs, token formats,

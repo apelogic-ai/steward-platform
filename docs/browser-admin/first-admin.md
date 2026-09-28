@@ -112,4 +112,5 @@ Revocation is also an append-only event, recorded with
 `steward rbac revoke admin` (or `revoke member-role`) through the operator
 CLI. `bootstrap-rbac` only grants, so until the CLI has a credential
 ([apelogic-ai/steward#146](https://github.com/apelogic-ai/steward/issues/146))
-an evaluation install is revoked by deleting it.
+an evaluation install is revoked by deleting it. See
+[known security limitations](../prerequisites.md#no-revocation-path-without-the-browser).

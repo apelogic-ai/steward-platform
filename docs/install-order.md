@@ -12,6 +12,9 @@ and proven by the [core end-to-end test](../tests/e2e/core/README.md). The
 **governed** sequence is an outline until the governed reference install lands
 ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
 
+Upgrading an existing pre-platform install instead? Use the
+[migration runbook](upgrades/from-pre-platform.md).
+
 ## 1. Choose the profile and check prerequisites
 
 | Profile | Installs | Needs |

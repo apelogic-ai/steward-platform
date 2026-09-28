@@ -129,8 +129,12 @@ hostname, or a self-hosted runner next to the cluster):
    ```
 
    The session cookie is a bearer credential for an hour: do not paste it
-   anywhere else, and sign out afterwards. A `409` means the observation
-   changed; read it again before retrying.
+   anywhere else, and sign out afterwards. This is a known security
+   limitation, repeated for every new caller identity; read the risk and
+   mitigations in
+   [prerequisites](../prerequisites.md#federated-subject-association-needs-a-pasted-session-cookie)
+   first. A `409` means the observation changed; read it again before
+   retrying.
 3. Run the same submission again. Steward now resolves the subject to the
    user and answers `503` with the staged-orchestration message instead of
    `403`. The association and its actor are in

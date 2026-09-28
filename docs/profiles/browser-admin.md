@@ -128,11 +128,17 @@ browser (workstation)                       kind cluster
   linux/amd64 only
   ([apelogic-ai/steward#148](https://github.com/apelogic-ai/steward/issues/148)).
 - **No automated identity linking.** Creating a canonical user and
-  associating a Task identity need a browser session
-  ([apelogic-ai/steward#179](https://github.com/apelogic-ai/steward/issues/179)).
+  associating a Task identity need a browser session, and association means
+  pasting the session cookie into a shell
+  ([apelogic-ai/steward#179](https://github.com/apelogic-ai/steward/issues/179),
+  [apelogic-ai/steward#184](https://github.com/apelogic-ai/steward/issues/184)).
+  This is a security limitation; see
+  [prerequisites](../prerequisites.md#federated-subject-association-needs-a-pasted-session-cookie).
 - **No operator CLI credential yet**
   ([apelogic-ai/steward#146](https://github.com/apelogic-ai/steward/issues/146));
-  administer in the browser.
+  administer in the browser. Without the CLI, a grant cannot be revoked if
+  the browser path is broken; see
+  [prerequisites](../prerequisites.md#no-revocation-path-without-the-browser).
 - **One apiserver replica.** Steward 0.3.2 keeps browser sessions in the
   apiserver process; a restart signs everyone out
   ([browser session contract](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/browser-session-contract-v1.md)).
