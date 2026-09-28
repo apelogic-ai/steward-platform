@@ -115,8 +115,8 @@ verifies the product attestations. See [docs/verification.md](docs/verification.
 
 ## Status
 
-Pre-release. The first BOM (`2026.10.0-alpha.1`) pins the core profile only:
-Steward 0.3.0, cert-manager for service TLS, and PostgreSQL 16 for evaluation.
+Pre-release. The current BOM (`2026.10.0-alpha.2`) pins the core profile only:
+Steward 0.3.1, cert-manager for service TLS, and PostgreSQL 16 for evaluation.
 There are no platform releases yet.
 
 ## Contributing and security

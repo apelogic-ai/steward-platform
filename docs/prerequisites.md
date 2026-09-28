@@ -88,7 +88,7 @@ Steward needs a separately operated PostgreSQL database; PostgreSQL 16 is the
 tested line. The chart does not create one. The BOM's `postgresql` entry is for
 evaluation and tests only: the kind reference install runs it in the cluster,
 without persistence or TLS. See the
-[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.0/docs/installation/installation-guide.md)
+[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md)
 for the required database role.
 
 ## Google Workspace
@@ -98,9 +98,10 @@ Google Workspace domain. Browser login is optional for a core install, but
 governed use needs it: users request and approve their User Envelopes through
 the browser.
 
-- Steward's `browserAuth.google.organizationId` must start with `org_`; the
-  chart schema does not check this yet
-  ([apelogic-ai/steward#137](https://github.com/apelogic-ai/steward/issues/137)).
+- Steward's `browserAuth.google.organizationId` is a Steward-chosen name, not
+  a Google organization ID: `org_` followed by up to 60 lowercase letters,
+  digits, `_` or `-`. The Steward 0.3.1 chart schema enforces this
+  ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md)).
 - mcp-gw's Google tool connections have their own Google Cloud requirements
   ([apelogic-ai/mcp-gw#80](https://github.com/apelogic-ai/mcp-gw/issues/80)).
 

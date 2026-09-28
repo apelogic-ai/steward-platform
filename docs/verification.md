@@ -18,10 +18,10 @@ The attestation check needs a GitHub token (`GH_TOKEN`), because `gh
 attestation verify` reads attestations through the GitHub API. The other checks
 need no credentials.
 
-## Attestation coverage: Steward 0.3.0
+## Attestation coverage: Steward 0.3.1
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.0:
+from `.github/workflows/release.yml` at the release tag. For 0.3.1:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -39,7 +39,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.0.tgz` (install the attested
+- the chart archive release asset `steward-0.3.1.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);

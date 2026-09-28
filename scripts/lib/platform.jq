@@ -2,8 +2,8 @@
 # helmfile inputs. Used by scripts/generate.sh; see that script for inputs.
 #
 # Every chart key set here is documented by the chart that owns it. The
-# Steward keys come from its v0.3.0 chart:
-# https://github.com/apelogic-ai/steward/blob/v0.3.0/charts/steward/values.yaml
+# Steward keys come from its v0.3.1 chart:
+# https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.yaml
 
 # --- Reserved fields ---------------------------------------------------------
 
