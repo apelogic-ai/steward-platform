@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/bom/v1.schema.json",
-  "platformVersion": "2026.10.0-alpha.2",
+  "platformVersion": "2026.10.0-alpha.3",
   "kubernetes": {
     "minVersion": "1.32",
     "maxVersion": "1.34",
@@ -47,6 +47,55 @@
       "minPeers": {
         "steward-run": "0.7.0"
       }
+    },
+    "github-oidc-exchange": {
+      "version": "0.7.1",
+      "source": "https://github.com/apelogic-ai/github-oidc-exchange",
+      "commit": "054893f55841595b952f26c60cdcc202e34392cc",
+      "release": "https://github.com/apelogic-ai/github-oidc-exchange/releases/tag/v0.7.1",
+      "chart": {
+        "reference": "oci://ghcr.io/apelogic-ai/charts/github-oidc-exchange",
+        "version": "0.7.1",
+        "digest": "sha256:5e9a105f530999212a9c9ff64d657f794a057de5f608430512092cb86c52803e"
+      },
+      "images": {
+        "exchange": "ghcr.io/apelogic-ai/github-oidc-exchange:0.7.1@sha256:ab5636d7368e82d0040b0a981c330a6f2ab54447c38603008c735135aa3cda09"
+      },
+      "signatures": {
+        "certificateIdentity": "https://github.com/apelogic-ai/github-oidc-exchange/.github/workflows/release.yml@refs/heads/main",
+        "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
+        "releaseManifest": { "asset": "release-manifest.json", "bundle": "release-manifest.sigstore.json" },
+        "subjects": {
+          "chart": "public-chart-signature.sigstore.json",
+          "exchange": "public-image-signature.sigstore.json"
+        }
+      }
+    },
+    "steward-run": {
+      "version": "0.7.1",
+      "source": "https://github.com/apelogic-ai/steward-run",
+      "commit": "5d08d38e63e7bc2c8f359bfa7f6008659094ec9b",
+      "release": "https://github.com/apelogic-ai/steward-run/releases/tag/v0.7.1",
+      "chart": {
+        "reference": "oci://ghcr.io/apelogic-ai/charts/steward-run-arc",
+        "version": "0.7.1",
+        "digest": "sha256:01deccbdda294f47cab0cdfae65d2dd12e4eeb51260a8f7a7ee760d43b67952b"
+      },
+      "images": {
+        "runner": "ghcr.io/apelogic-ai/steward-run:0.7.1@sha256:7b2d9b13b83567ba8a9558c2a0cd275b7aec972efc88c122c95e8b54400df5b4"
+      },
+      "action": {
+        "commit": "018d9eb20d036b26060c5cb3d979a84d42bcc051"
+      },
+      "signatures": {
+        "certificateIdentity": "https://github.com/apelogic-ai/steward-run/.github/workflows/portable-release.yml@refs/heads/main",
+        "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
+        "releaseManifest": { "asset": "oss-release-manifest.json", "bundle": "oss-release-manifest.sigstore.json" },
+        "subjects": {
+          "chart": "chart-signature.sigstore.json",
+          "runner": "image-signature.sigstore.json"
+        }
+      }
     }
   },
   "dependencies": {
@@ -55,7 +104,7 @@
       "version": "1.21.2",
       "source": "https://cert-manager.io",
       "usage": "reference-install",
-      "requiredFor": ["core"],
+      "requiredFor": ["core", "task-auth"],
       "chart": {
         "reference": "oci://quay.io/jetstack/charts/cert-manager",
         "version": "v1.21.2",
@@ -74,10 +123,45 @@
       "version": "16.14",
       "source": "https://www.postgresql.org",
       "usage": "evaluation-only",
-      "requiredFor": ["core"],
+      "requiredFor": ["core", "task-auth"],
       "images": {
         "postgres": "docker.io/library/postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
       }
+    },
+    "gateway-api-crds": {
+      "description": "Gateway API CRDs, standard channel, which the task-auth edge uses for its Gateway, HTTPRoutes and BackendTLSPolicy. The release Envoy Gateway 1.9.1 bundles; Steward needs v1.4.0 or later. The reference install server-side applies the manifest, so upgrades update the CRDs.",
+      "version": "1.6.1",
+      "source": "https://gateway-api.sigs.k8s.io",
+      "usage": "reference-install",
+      "requiredFor": ["task-auth"],
+      "manifests": [
+        {
+          "url": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml",
+          "digest": "sha256:24d931f22abd8e40c973264319ead7cfa09d0fb7716b7ab1ee2ff174cb063a73"
+        }
+      ]
+    },
+    "envoy-gateway": {
+      "description": "Gateway API implementation for the task-auth edge. Steward's chart names Envoy Gateway v1.9.1 as its tested controller line. The reference installs install it in every environment; an operator who already runs an implementation with BackendTLSPolicy support can keep theirs. Its CRDs are server-side applied from its release manifest rather than installed by Helm: Envoy Gateway's CRD chart is too large to be stored as a Helm release.",
+      "version": "1.9.1",
+      "source": "https://gateway.envoyproxy.io",
+      "usage": "reference-install",
+      "requiredFor": ["task-auth"],
+      "chart": {
+        "reference": "oci://docker.io/envoyproxy/gateway-helm",
+        "version": "v1.9.1",
+        "digest": "sha256:91bae9aedb91ab34731e987afe01a3ccf454393015abeca705eea8ee15553e86"
+      },
+      "images": {
+        "controller": "docker.io/envoyproxy/gateway:v1.9.1@sha256:0049bcb384c591c6a6dd043fe5c9929ef6e74f230e12dd678d2d3701df9b301e",
+        "proxy": "docker.io/envoyproxy/envoy:distroless-v1.39.1@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4"
+      },
+      "manifests": [
+        {
+          "url": "https://github.com/envoyproxy/gateway/releases/download/v1.9.1/envoy-gateway-crds.yaml",
+          "digest": "sha256:613fac22b8673735e97fd2523098974bd74cb0cc78e444602b3383d1217b8aab"
+        }
+      ]
     }
   },
   "profiles": {
@@ -85,6 +169,11 @@
       "description": "Steward API, admission webhook and controller with a PostgreSQL database, and cert-manager for service TLS. No agent execution.",
       "products": ["steward"],
       "dependencies": ["cert-manager", "postgresql"]
+    },
+    "task-auth": {
+      "description": "Core plus github-oidc-exchange behind an Envoy Gateway edge, exercised by the steward-run GitHub Action: proves Task authentication with real GitHub Actions OIDC. No agent execution.",
+      "products": ["steward", "github-oidc-exchange", "steward-run"],
+      "dependencies": ["cert-manager", "postgresql", "gateway-api-crds", "envoy-gateway"]
     }
   }
 }

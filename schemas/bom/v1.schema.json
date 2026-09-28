@@ -37,6 +37,7 @@
       "required": ["core"],
       "properties": {
         "core": { "$ref": "#/$defs/profile" },
+        "task-auth": { "$ref": "#/$defs/profile" },
         "governed": { "$ref": "#/$defs/profile" }
       }
     }
@@ -51,7 +52,7 @@
       "enum": ["steward", "steward-run", "github-oidc-exchange", "mcp-gw"]
     },
     "profileName": {
-      "enum": ["core", "governed"]
+      "enum": ["core", "task-auth", "governed"]
     },
     "digest": {
       "description": "Content digest.",
@@ -70,6 +71,12 @@
     "githubRepository": {
       "type": "string",
       "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+    },
+    "releaseAsset": {
+      "description": "File name of an asset on the product's GitHub release.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "maxLength": 255
     },
     "httpsUrl": {
       "type": "string",
@@ -143,6 +150,37 @@
         }
       }
     },
+    "signatures": {
+      "description": "Sigstore bundles that a product attaches to its GitHub release, for products that sign with cosign rather than GitHub artifact attestations. CI verifies the signed release manifest, checks that it names the pinned version, commit and digests, and verifies every listed subject, each against the signer identity at the pinned commit.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["certificateIdentity", "certificateOidcIssuer", "releaseManifest", "subjects"],
+      "properties": {
+        "certificateIdentity": {
+          "description": "Exact certificate identity of the signing workflow: https://github.com/owner/repository/.github/workflows/file@ref.",
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/\\.github/workflows/[A-Za-z0-9._-]+\\.ya?ml@refs/(heads|tags)/[A-Za-z0-9._/-]+$"
+        },
+        "certificateOidcIssuer": { "const": "https://token.actions.githubusercontent.com" },
+        "releaseManifest": {
+          "description": "The product's machine-readable release manifest and its bundle.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["asset", "bundle"],
+          "properties": {
+            "asset": { "$ref": "#/$defs/releaseAsset" },
+            "bundle": { "$ref": "#/$defs/releaseAsset" }
+          }
+        },
+        "subjects": {
+          "description": "Signature bundle per signed artifact, keyed by \"chart\" or an image component name.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": { "$ref": "#/$defs/releaseAsset" }
+        }
+      }
+    },
     "product": {
       "type": "object",
       "additionalProperties": false,
@@ -159,6 +197,16 @@
         "chart": { "$ref": "#/$defs/chart" },
         "images": { "$ref": "#/$defs/images" },
         "provenance": { "$ref": "#/$defs/provenance" },
+        "signatures": { "$ref": "#/$defs/signatures" },
+        "action": {
+          "description": "GitHub Action the product publishes. Tests run the action code at exactly this commit.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit"],
+          "properties": {
+            "commit": { "$ref": "#/$defs/commit" }
+          }
+        },
         "minPeers": {
           "description": "Minimum versions of peer products that this release declares. Only checked for peers that are in the BOM.",
           "type": "object",

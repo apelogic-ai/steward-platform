@@ -56,7 +56,18 @@ errors="$(jq -r '
               | (["chart" | select($p.chart != null)] + ($p.images // {} | keys)) as $known
               | $p.provenance.subjects[] as $s
               | select($known | index($s) | not)
-              | "product \($name): attestation subject \($s) is neither the chart nor an image component")
+              | "product \($name): attestation subject \($s) is neither the chart nor an image component"),
+            (select($p.signatures != null and $p.release == null)
+              | "product \($name): signatures need the release that carries the bundles"),
+            (select($p.signatures != null)
+              | (["chart" | select($p.chart != null)] + ($p.images // {} | keys)) as $known
+              | $p.signatures.subjects | keys[] as $s
+              | select($known | index($s) | not)
+              | "product \($name): signature subject \($s) is neither the chart nor an image component"),
+            (select($p.signatures != null)
+              | ($p.source | ltrimstr("https://github.com/")) as $repository
+              | select($p.signatures.certificateIdentity | startswith("https://github.com/\($repository)/.github/workflows/") | not)
+              | "product \($name): signatures.certificateIdentity is not a workflow of \($p.source)")
           )),
 
       # Declared minimum peer versions hold for peers that are in the BOM.
