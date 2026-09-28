@@ -72,9 +72,9 @@ database and the evaluation CA; the schema rejects the combination.
 The generator also sets Steward's `images` from the BOM and keeps
 `execution.enabled=false` and `networkPolicy.enabled=true`. Steward keys are
 defined by its chart:
-[values](https://github.com/apelogic-ai/steward/blob/v0.3.0/charts/steward/values.yaml),
-[schema](https://github.com/apelogic-ai/steward/blob/v0.3.0/charts/steward/values.schema.json),
-[chart README](https://github.com/apelogic-ai/steward/blob/v0.3.0/charts/steward/README.md).
+[values](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.yaml),
+[schema](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.schema.json),
+[chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md).
 
 ### Reserved for governed mode
 
@@ -95,4 +95,4 @@ sets any of them. Generation is tracked in
 | `namespaces.identityExchange`, `.mcpGateway`, `.runners`, `.litellm`, `.openshell`, `.spire`, `.runtimes` | every chart's NetworkPolicy and service URLs |
 | `serviceAccounts.steward.mint`, `.identityExchange`, `.mcpGateway` | workload identities that peers trust |
 | `networkPolicy.edgeNamespace`, `networkPolicy.egressCidrs.*` | Steward and peer NetworkPolicies |
-| `browserAuth.google.*` | Steward browser login. The schema requires `organizationId` to start with `org_`, which the Steward chart does not check yet ([apelogic-ai/steward#137](https://github.com/apelogic-ai/steward/issues/137)). |
+| `browserAuth.google.*` | Steward browser login. `organizationId` follows the Steward chart's rule: `org_` followed by up to 60 lowercase letters, digits, `_` or `-`. |

@@ -346,9 +346,9 @@
             "clientId": { "type": "string", "minLength": 1 },
             "workspaceDomain": { "type": "string", "minLength": 1 },
             "organizationId": {
-              "description": "Steward organization ID. It must start with org_; the Steward chart schema does not check this yet (apelogic-ai/steward#137) and the apiserver fails at startup otherwise.",
+              "description": "Steward organization ID: a Steward-chosen stable namespace, not a Google or cloud organization ID. Same rule as the Steward 0.3.1 chart schema: 4 to 64 characters, org_ followed by lowercase ASCII letters, digits, _ or -.",
               "type": "string",
-              "pattern": "^org_[A-Za-z0-9_-]+$"
+              "pattern": "^org_[a-z0-9_-]{0,60}$"
             },
             "clientSecret": {
               "type": "object",
