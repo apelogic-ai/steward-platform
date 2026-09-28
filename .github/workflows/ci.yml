@@ -1,0 +1,105 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck
+
+  validate:
+    name: validate BOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.38.2
+      - name: Validate
+        run: scripts/validate-bom.sh
+
+  digests:
+    name: verify digests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        run: scripts/ci/install-tools.sh crane
+      - name: Verify every digest resolves anonymously
+        run: scripts/verify-digests.sh
+
+  attestations:
+    name: verify attestations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify product attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/verify-attestations.sh
+
+  e2e-plan:
+    name: plan e2e matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read tested Kubernetes versions from the BOM
+        id: versions
+        run: echo "versions=$(jq -c '[.kubernetes.tested[].version]' bom/bom.json)" >> "${GITHUB_OUTPUT}"
+
+  e2e-core:
+    name: core e2e (Kubernetes ${{ matrix.k8s }})
+    needs: [validate, e2e-plan]
+    # Steward images are linux/amd64 only; ubuntu-latest is amd64.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s: ${{ fromJSON(needs.e2e-plan.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        run: scripts/ci/install-tools.sh kind helm kubectl
+      - name: Run core e2e from the BOM
+        env:
+          K8S_VERSION: ${{ matrix.k8s }}
+        run: tests/e2e/core/run.sh

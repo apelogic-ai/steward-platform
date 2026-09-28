@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/apelogic-ai/steward-platform/main/schemas/bom/v1.schema.json",
+  "title": "Steward platform bill of materials, v1",
+  "description": "Exact product releases, external dependencies and Kubernetes versions that are tested together as one platform version. Every artifact is pinned by digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["platformVersion", "kubernetes", "products", "dependencies", "profiles"],
+  "properties": {
+    "$schema": {
+      "description": "Optional pointer to this schema, for editors.",
+      "type": "string"
+    },
+    "platformVersion": {
+      "description": "Calendar version of the platform: YEAR.MONTH.PATCH, with an optional -alpha.N, -beta.N or -rc.N pre-release suffix.",
+      "type": "string",
+      "pattern": "^20[0-9]{2}\\.([1-9]|1[0-2])\\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\\.[1-9][0-9]*)?$"
+    },
+    "kubernetes": { "$ref": "#/$defs/kubernetes" },
+    "products": {
+      "description": "Platform products keyed by product name.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/productName" },
+      "additionalProperties": { "$ref": "#/$defs/product" }
+    },
+    "dependencies": {
+      "description": "External dependencies keyed by dependency name.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/dependency" }
+    },
+    "profiles": {
+      "description": "Install profiles. Each lists the products and dependencies it includes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["core"],
+      "properties": {
+        "core": { "$ref": "#/$defs/profile" },
+        "governed": { "$ref": "#/$defs/profile" }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "maxLength": 63
+    },
+    "productName": {
+      "enum": ["steward", "steward-run", "github-oidc-exchange", "mcp-gw"]
+    },
+    "profileName": {
+      "enum": ["core", "governed"]
+    },
+    "digest": {
+      "description": "Content digest.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "commit": {
+      "description": "Full Git commit SHA.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "githubRepository": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "imageReference": {
+      "description": "Fully qualified image reference with tag and digest: registry/repository:tag@sha256:... The digest is authoritative; the tag is for readers.",
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+:[A-Za-z0-9_][A-Za-z0-9._-]{0,127}@sha256:[a-f0-9]{64}$"
+    },
+    "images": {
+      "description": "Container images keyed by component name.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/imageReference" }
+    },
+    "chart": {
+      "description": "Helm chart published as an OCI artifact.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "version", "digest"],
+      "properties": {
+        "reference": {
+          "description": "OCI chart reference without tag or digest.",
+          "type": "string",
+          "pattern": "^oci://[a-z0-9-]+(\\.[a-z0-9-]+)+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+$"
+        },
+        "version": { "$ref": "#/$defs/semver" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "manifest": {
+      "description": "A plain file (for example a Kubernetes manifest) downloaded over HTTPS and pinned by the SHA-256 of its content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "digest"],
+      "properties": {
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "provenance": {
+      "description": "GitHub artifact attestations the product publishes. CI verifies every listed subject against the signer identity and the product commit.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicateType", "signerWorkflow", "sourceRef", "subjects"],
+      "properties": {
+        "predicateType": { "enum": ["https://slsa.dev/provenance/v1"] },
+        "signerWorkflow": {
+          "description": "Workflow that signs the attestations: owner/repository/.github/workflows/file.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+/\\.github/workflows/[A-Za-z0-9._-]+\\.ya?ml$"
+        },
+        "sourceRef": {
+          "description": "Git ref the signing workflow ran on.",
+          "type": "string",
+          "pattern": "^refs/tags/[A-Za-z0-9._/-]+$"
+        },
+        "subjects": {
+          "description": "Artifacts that carry an attestation: \"chart\" and/or image component names. Artifacts the product does not attest are left out.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/name" }
+        }
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source", "commit"],
+      "anyOf": [{ "required": ["chart"] }, { "required": ["images"] }],
+      "properties": {
+        "version": { "$ref": "#/$defs/semver" },
+        "source": { "$ref": "#/$defs/githubRepository" },
+        "commit": { "$ref": "#/$defs/commit" },
+        "release": {
+          "description": "Release page that publishes these artifacts.",
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "chart": { "$ref": "#/$defs/chart" },
+        "images": { "$ref": "#/$defs/images" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "minPeers": {
+          "description": "Minimum versions of peer products that this release declares. Only checked for peers that are in the BOM.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/productName" },
+          "additionalProperties": { "$ref": "#/$defs/semver" }
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source", "usage", "requiredFor"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "version": {
+          "description": "Upstream version.",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "description": "Upstream project.",
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "usage": {
+          "description": "required: the platform needs this dependency as pinned. evaluation-only: used by tests and evaluation installs; production installs bring their own equivalent.",
+          "enum": ["required", "evaluation-only"]
+        },
+        "requiredFor": {
+          "description": "Profiles that include this dependency.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/profileName" }
+        },
+        "chart": { "$ref": "#/$defs/chart" },
+        "images": { "$ref": "#/$defs/images" },
+        "manifests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/manifest" }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "products", "dependencies"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "products": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/productName" }
+        },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/name" }
+        }
+      }
+    },
+    "kubernetes": {
+      "description": "Kubernetes versions the platform is tested on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minVersion", "maxVersion", "tested"],
+      "properties": {
+        "minVersion": {
+          "description": "Lowest supported minor version.",
+          "type": "string",
+          "pattern": "^1\\.(0|[1-9][0-9]*)$"
+        },
+        "maxVersion": {
+          "description": "Highest supported minor version.",
+          "type": "string",
+          "pattern": "^1\\.(0|[1-9][0-9]*)$"
+        },
+        "tested": {
+          "description": "Exact versions the end-to-end tests run on, with the kind node image used for each.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "nodeImage"],
+            "properties": {
+              "version": {
+                "type": "string",
+                "pattern": "^1\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+              },
+              "nodeImage": { "$ref": "#/$defs/imageReference" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
