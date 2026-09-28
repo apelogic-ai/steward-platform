@@ -84,6 +84,32 @@ errors="$(jq -r '
               | "product \($name): signatures.certificateIdentity is not a workflow of \($p.source)")
           )),
 
+      # Dependencies tested at several versions: the default is one of them,
+      # every tested version is at or above minVersion and minVersion itself
+      # is tested, and each tested entry has the same image components, tagged
+      # with its version.
+      ($bom.dependencies | to_entries[] | select(.value.tested != null) | .key as $name | .value as $d
+        | ($d.minVersion | split(".") | map(tonumber)) as $min
+        | ($d.tested | map(.version)) as $versions
+        | (
+            (select(($versions | unique | length) != ($versions | length))
+              | "dependency \($name): tested versions are not unique"),
+            (select([$d.tested[] | select(.version == $d.version and .images == $d.images)] | length == 0)
+              | "dependency \($name): version \($d.version) and its images are not one of the tested entries"),
+            (select([$versions[] | select(split(".")[0:($min | length)] | map(tonumber) == $min)] | length == 0)
+              | "dependency \($name): minVersion \($d.minVersion) is not tested"),
+            ($d.tested[] | .version as $v
+              | (
+                  (select(($v | split(".")[0:($min | length)] | map(tonumber)) < $min)
+                    | "dependency \($name): tested \($v) is below minVersion \($d.minVersion)"),
+                  (select((.images | keys) != ($d.images | keys))
+                    | "dependency \($name): tested \($v) has images \(.images | keys), not \($d.images | keys)"),
+                  (.images | to_entries[] | (.value | capture(":(?<tag>[^:@/]+)@").tag) as $tag
+                    | select($tag != $v and ($tag | startswith($v + "-") | not))
+                    | "dependency \($name): tested \($v) image \(.key) is tagged \($tag)")
+                ))
+          )),
+
       # Declared minimum peer versions hold for peers that are in the BOM.
       ($bom.products | to_entries[] | .key as $name
         | (.value.minPeers // {}) | to_entries[]

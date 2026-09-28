@@ -146,14 +146,29 @@
       }
     },
     "postgresql": {
-      "description": "Database for Steward. Evaluation and tests only; production installs use a separately operated PostgreSQL 16.",
+      "description": "Database for Steward. Evaluation and tests only; production installs use a separately operated PostgreSQL, version 16 or later (minVersion). The core end-to-end test runs on every tested version; version and images are the default that the reference install and the other end-to-end tests use.",
       "version": "16.14",
+      "minVersion": "16",
       "source": "https://www.postgresql.org",
       "usage": "evaluation-only",
       "requiredFor": ["core", "task-auth", "browser-admin"],
       "images": {
         "postgres": "docker.io/library/postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
-      }
+      },
+      "tested": [
+        {
+          "version": "16.14",
+          "images": {
+            "postgres": "docker.io/library/postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+          }
+        },
+        {
+          "version": "17.11",
+          "images": {
+            "postgres": "docker.io/library/postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+          }
+        }
+      ]
     },
     "gateway-api-crds": {
       "description": "Gateway API CRDs, standard channel, which the task-auth and browser-admin edge uses for its Gateway, HTTPRoutes and BackendTLSPolicy. The release Envoy Gateway 1.9.1 bundles; Steward needs v1.4.0 or later. The reference install server-side applies the manifest, so upgrades update the CRDs.",

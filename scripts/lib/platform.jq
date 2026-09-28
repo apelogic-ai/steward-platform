@@ -364,12 +364,28 @@ def evaluation_edge_values:
       }
     };
 
+# The BOM's tested PostgreSQL entries that database.evaluationVersion names: a
+# major version ("17") or an exact one. scripts/generate.sh requires exactly
+# one.
+def evaluation_postgres_matches($bom):
+  .database.evaluationVersion as $wanted
+  | [($bom.dependencies.postgresql.tested // [])[]
+      | select(.version == $wanted or (.version | startswith($wanted + ".")))];
+
+# The evaluation PostgreSQL image: that tested entry's, or the BOM default.
+def evaluation_postgres_image($bom):
+  if .database.evaluationVersion == null then $bom.dependencies.postgresql.images.postgres
+  else evaluation_postgres_matches($bom)
+    | if length == 1 then .[0].images.postgres
+      else error("database.evaluationVersion does not name exactly one tested PostgreSQL version") end
+  end;
+
 # Values for charts/postgresql-evaluation in this repository.
 def postgresql_evaluation_values($bom):
   . as $v
   | {
       name: evaluation_postgres_name,
-      image: ($bom.dependencies.postgresql.images.postgres | image_parts | {repository, tag, digest}),
+      image: ($v | evaluation_postgres_image($bom) | image_parts | {repository, tag, digest}),
       port: $v.database.port,
       clusterDomain: $v.cluster.domain,
       stewardDatabaseSecret: $v.database.secret

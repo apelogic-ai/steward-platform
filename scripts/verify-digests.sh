@@ -6,6 +6,8 @@
 # digest is what gets installed either way.
 #
 # Usage: scripts/verify-digests.sh [path/to/bom.json]
+# The images of every tested version of a dependency are checked too (the
+# default version's once).
 # A manifest's Git fluxSource is checked the same way: its tag still names its
 # commit, or a warning (Flux checks out the commit either way).
 #
@@ -37,6 +39,9 @@ entries="$(jq -r '
   def artifacts($kind):
     to_entries[] | .key as $k | .value
     | ((.images // {}) | to_entries[] | .key as $c | .value | image("\($kind).\($k).images.\($c)"))
+    , (.images as $default | (.tested // [])[] | .version as $v | .images | to_entries[]
+        | select(.value != $default[.key])
+        | .key as $c | .value | image("\($kind).\($k).tested.\($v).images.\($c)"))
     , (.chart // empty | ["chart", "\($kind).\($k).chart", "\(.reference | ltrimstr("oci://")):\(.version)", .digest])
     , ((.manifests // [])[] | ["manifest", "\($kind).\($k).manifests", .url, .digest])
     , ((.manifests // [])[] | .fluxSource.git // empty

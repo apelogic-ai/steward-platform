@@ -76,6 +76,7 @@ combination.
 | `tls.certManager.issuer` | Steward `tls.issuerRef` | `evaluation` creates a self-signed CA `Issuer` in the Steward namespace; `operator` names your `Issuer` or `ClusterIssuer`. |
 | `tls.customerSecret` | Steward `tls.api.secretName`, `tls.webhook.secretName`, `tls.webhook.caBundlePem` | `caBundleFile` is read and embedded. The generator refuses a file that contains a private key. |
 | `database.source` | whether the reference install runs evaluation PostgreSQL | `operator` means you create the database Secret. |
+| `database.evaluationVersion` | which tested PostgreSQL image the evaluation database runs | Evaluation source only. A major version (`"17"`) or an exact one that names one entry of `dependencies.postgresql.tested` in the BOM; the default is the BOM's `version`. |
 | `database.secret` | Steward `secrets.database` | The evaluation database chart writes this Secret; otherwise you do. |
 | `database.cidrs`, `.port` | Steward `networkPolicy.postgresCidrs`, `networkPolicy.ports.postgres` | |
 | `database.tls` | Steward `databaseTls` | `verify-full` also needs the URL to carry `sslmode=verify-full&sslrootcert=/run/database-tls/ca.crt`. |

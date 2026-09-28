@@ -114,6 +114,13 @@ for member in "${members[@]}"; do
     || fail "the BOM ${profile} profile lacks ${member}"
 done
 
+if jq -e '.database.evaluationVersion != null' <<<"${values_json}" >/dev/null; then
+  wanted="$(jq -r .database.evaluationVersion <<<"${values_json}")"
+  matches="$(jq -r --slurpfile bom "${bom}" -L "${repo_root}/scripts/lib" \
+    'include "platform"; evaluation_postgres_matches($bom[0]) | length' <<<"${values_json}")"
+  [[ "${matches}" == 1 ]] || fail "database.evaluationVersion ${wanted} names ${matches} of the BOM's tested PostgreSQL versions ($(jq -r '[.dependencies.postgresql.tested // [] | .[].version] | join(", ")' "${bom}")); it must name exactly one"
+fi
+
 ca_bundle=""
 if [[ "$(jq -r .tls.mode <<<"${values_json}")" == customerSecret ]]; then
   ca_file="$(jq -r .tls.customerSecret.caBundleFile <<<"${values_json}")"

@@ -14,7 +14,7 @@ administrator roles.
 | [amd64 nodes](#amd64-nodes) | Required | Required |
 | [Kubernetes 1.32–1.34](#kubernetes-version) | 1.32–1.34 | 1.32–1.34 |
 | [NetworkPolicy-enforcing CNI](#networkpolicy) | Required | Required |
-| [PostgreSQL 16](#postgresql) | Required | Required |
+| [PostgreSQL ≥ 16 (tested: 16.14, 17.11)](#postgresql) | Required | Required |
 | [Google Workspace](#google-workspace) | Only for browser login (browser-admin profile) | Required |
 | [GitHub.com](#githubcom) | Not needed | Required |
 | [PodSecurity `privileged` namespaces](#podsecurity) | Not needed | Required |
@@ -106,12 +106,28 @@ Known gaps:
 
 ## PostgreSQL
 
-Steward needs a separately operated PostgreSQL database; PostgreSQL 16 is the
-tested line. The chart does not create one. The BOM's `postgresql` entry is for
-evaluation and tests only: the kind reference install runs it in the cluster,
-without persistence or TLS. See the
+Steward needs a separately operated PostgreSQL database: **PostgreSQL ≥ 16;
+tested: 16.14 and 17.11**. The chart does not create one.
+
+- **Minimum, 16.** `dependencies.postgresql.minVersion` in
+  [bom/bom.json](../bom/bom.json). Nothing older is tested.
+- **Tested, 16.14 and 17.11.** `dependencies.postgresql.tested`, each pinned
+  by image digest. CI runs the core end-to-end test on 16.14 on every tested
+  Kubernetes version and on 17.11 on the highest one: every Steward database
+  migration applies, and the test checks the exact server version. Managed
+  database services commonly default to PostgreSQL 17, which is tested.
+  Versions above 17 are untested by this BOM; no incompatibility is known.
+- **Evaluation only.** The BOM's `postgresql` entry is for evaluation and
+  tests: the kind reference install runs it in the cluster, without
+  persistence or TLS, at the BOM default (16.14) unless
+  `database.evaluationVersion` in the [platform values](platform-values.md)
+  names another tested version.
+
+See the
 [Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md)
-for the required database role.
+for the required database role. That guide still lists PostgreSQL 16 without a
+minimum; stating the same minimum and tested versions there is tracked in
+[apelogic-ai/steward#188](https://github.com/apelogic-ai/steward/issues/188).
 
 ## Google Workspace
 

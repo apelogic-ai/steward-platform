@@ -61,7 +61,8 @@ the schema rejects them.
 
 Before the first sync, in the Steward namespace:
 
-1. PostgreSQL 16, operated separately, and the Secret named in
+1. PostgreSQL 16 or later ([tested versions](../docs/prerequisites.md#postgresql)),
+   operated separately, and the Secret named in
    `database.secret` holding the full database URL. With `database.tls.mode:
    verify-full`, the URL carries
    `sslmode=verify-full&sslrootcert=/run/database-tls/ca.crt` and the CA

@@ -1,7 +1,8 @@
 # Name of the Deployment, Service and password Secret.
 name: postgresql-evaluation
-# PostgreSQL image, pinned by digest. The generator takes it from the BOM
-# (dependencies.postgresql.images.postgres).
+# PostgreSQL image, pinned by digest. The generator takes it from the BOM:
+# dependencies.postgresql.images.postgres, or the tested entry that the
+# platform values database.evaluationVersion names.
 image:
   repository: ""
   tag: ""

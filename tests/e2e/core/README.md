@@ -8,7 +8,9 @@ it works. It runs the same steps an evaluator runs:
    [`environments/kind/kind-config.yaml`](../../../environments/kind/kind-config.yaml)
    and the BOM node image for the Kubernetes version under test;
 2. run [`scripts/generate.sh`](../../../scripts/generate.sh) on
-   [`environments/kind/platform-values.yaml`](../../../environments/kind/platform-values.yaml);
+   [`environments/kind/platform-values.yaml`](../../../environments/kind/platform-values.yaml),
+   with `database.evaluationVersion` set to the PostgreSQL version under test
+   when it is not the BOM default;
 3. `helmfile sync` the `kind` environment: cert-manager, the evaluation CA,
    evaluation PostgreSQL and Steward.
 
@@ -27,12 +29,14 @@ hand-picked set of tags.
    `cluster.serviceAccountTokenAudience`.
 4. The running Steward, cert-manager and PostgreSQL pods use the exact image
    digests from the BOM, and the PostgreSQL pod is inside `database.cidrs`.
-5. Every database migration applied.
-6. cert-manager issued both Steward certificates from the evaluation CA.
-7. The `AgentRuntime` CRD is established, cert-manager injected the
+5. The PostgreSQL server reports the exact tested version under test
+   (`SHOW server_version`).
+6. Every database migration applied.
+7. cert-manager issued both Steward certificates from the evaluation CA.
+8. The `AgentRuntime` CRD is established, cert-manager injected the
    evaluation CA into the validating webhook, which has `failurePolicy: Fail`,
    and the webhook denies an invalid `AgentRuntime`.
-8. The API answers `401` on an admin route over TLS verified against the
+9. The API answers `401` on an admin route over TLS verified against the
    evaluation CA.
 
 It deletes the cluster and its work directory when it finishes, pass or fail.
@@ -47,12 +51,18 @@ Requirements: an **amd64** Docker engine, `kind`, `helm` 3.17 or later,
 ```sh
 tests/e2e/core/run.sh                     # highest tested Kubernetes version
 K8S_VERSION=1.32.11 tests/e2e/core/run.sh # a specific entry in kubernetes.tested
+POSTGRES_VERSION=17 tests/e2e/core/run.sh # an entry in dependencies.postgresql.tested
 KEEP_CLUSTER=1 tests/e2e/core/run.sh      # keep the cluster for debugging
 ```
 
 The generated inputs go to the run's work directory, not to `generated/`.
-CI runs the test once per entry in `kubernetes.tested`, on GitHub-hosted
-`ubuntu-latest` runners.
+CI runs the test on GitHub-hosted `ubuntu-latest` runners, with a matrix
+generated from the BOM: the default PostgreSQL version on every entry in
+`kubernetes.tested`, and every other entry in `dependencies.postgresql.tested`
+on the highest Kubernetes version. The database version and the Kubernetes
+version are independent: Steward reaches PostgreSQL over TCP, and admission,
+cert-manager and NetworkPolicy do not depend on the database version, so
+crossing every pair would add runs without adding coverage.
 
 ### Apple Silicon and other arm64 hosts
 
@@ -72,7 +82,8 @@ each one comes from.
 
 - **PostgreSQL** runs in the cluster from the BOM image, without TLS
   (`sslmode=disable`) or persistence. This is evaluation-only; production uses
-  a separately operated PostgreSQL 16.
+  a separately operated PostgreSQL, version 16 or later
+  ([prerequisites](../../../docs/prerequisites.md#postgresql)).
 - **Service certificates** come from cert-manager with a self-signed CA
   `Issuer`, through Steward's `tls.mode=certManager`. cert-manager's CA
   injector supplies the webhook CA bundle.
