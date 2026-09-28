@@ -66,6 +66,9 @@ An `evaluation-only` dependency is used by tests and evaluation installs.
 Production installs bring their own equivalent, for example a managed
 PostgreSQL 16.
 
+CI validates the BOM, checks that every digest resolves anonymously, and
+verifies the product attestations. See [docs/verification.md](docs/verification.md).
+
 ## Status
 
 Pre-release. The first BOM (`2026.10.0-alpha.1`) pins the core profile only:
