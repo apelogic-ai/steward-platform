@@ -1,0 +1,14 @@
+apiVersion: v2
+name: evaluation-edge
+description: >-
+  Evaluation only. An Envoy Gateway GatewayClass and Gateway with one HTTPS
+  listener, whose certificate comes from a cert-manager Issuer in the release
+  namespace (a self-signed edge CA), and the public ConfigMap of the
+  evaluation Steward CA that the Steward BackendTLSPolicy verifies against.
+  Production uses the operator's Gateway, certificates and trust distribution.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.32.0-0"
+home: https://github.com/apelogic-ai/steward-platform
+annotations:
+  steward-platform/evaluation-only: "true"

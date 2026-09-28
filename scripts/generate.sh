@@ -11,9 +11,15 @@
 #   values/cert-manager.yaml            when tls.certManager.install is true
 #   values/evaluation-ca.yaml           when the evaluation CA issuer is used
 #   values/postgresql-evaluation.yaml   when the evaluation database is used
+#   values/github-oidc-exchange.yaml    task-auth: github-oidc-exchange chart values
+#   values/steward-edge.yaml            task-auth: Steward's task API routes (charts/steward-edge)
+#   values/envoy-gateway.yaml           task-auth, when edge.install is true
+#   values/edge-evaluation-ca.yaml      task-auth, when the evaluation Gateway is used
+#   values/evaluation-edge.yaml         task-auth, when the evaluation Gateway is used
 #   flux/                               Flux OCIRepository and HelmRelease objects for
-#                                       the same install, when no evaluation piece is
-#                                       used (examples/flux/core is this, for production)
+#                                       the same install, for the core profile when no
+#                                       evaluation piece is used (examples/flux/core is
+#                                       this, for production)
 #
 # The output depends only on the two inputs: the same inputs give the same
 # bytes. Needs: jq 1.7+, yq (mikefarah) v4, check-jsonschema.
@@ -72,14 +78,31 @@ if [[ -n "${reserved}" ]]; then
   while IFS= read -r field; do
     echo "error: ${field} is reserved for governed mode" >&2
   done <<<"${reserved}"
-  fail "the v1 generator implements the core profile only; governed mode is tracked in https://github.com/apelogic-ai/steward-platform/issues/3"
+  fail "the v1 generator implements the core and task-auth profiles; governed mode is tracked in https://github.com/apelogic-ai/steward-platform/issues/3"
 fi
 
 profile="$(jq -r .profile <<<"${values_json}")"
-[[ "${profile}" == core ]] || fail "profile ${profile} is not implemented yet; see https://github.com/apelogic-ai/steward-platform/issues/3"
+members=('.products | index("steward")' '.dependencies | index("postgresql")' '.dependencies | index("cert-manager")')
+case "${profile}" in
+  core) ;;
+  task-auth)
+    members+=('.products | index("github-oidc-exchange")' '.products | index("steward-run")')
+    if jq -e '.edge.install' <<<"${values_json}" >/dev/null; then
+      members+=('.dependencies | index("gateway-api-crds")' '.dependencies | index("envoy-gateway")')
+    fi
+    if jq -e '.edge.gateway.source == "evaluation"' <<<"${values_json}" >/dev/null; then
+      # The evaluation Gateway is an Envoy Gateway one, its certificate comes
+      # from cert-manager, and it publishes the evaluation Steward CA.
+      jq -e '.edge.install and .tls.mode == "certManager" and .tls.certManager.issuer.source == "evaluation"' \
+        <<<"${values_json}" >/dev/null \
+        || fail "edge.gateway.source evaluation needs edge.install true and the evaluation cert-manager issuer (tls.certManager.issuer.source evaluation)"
+    fi
+    ;;
+  *) fail "profile ${profile} is not implemented yet; see https://github.com/apelogic-ai/steward-platform/issues/3" ;;
+esac
 jq -e --arg p "${profile}" '.profiles[$p] != null' "${bom}" >/dev/null \
   || fail "the BOM has no ${profile} profile"
-for member in '.products | index("steward")' '.dependencies | index("postgresql")' '.dependencies | index("cert-manager")'; do
+for member in "${members[@]}"; do
   jq -e --arg p "${profile}" ".profiles[\$p] | ${member}" "${bom}" >/dev/null \
     || fail "the BOM ${profile} profile lacks ${member}"
 done

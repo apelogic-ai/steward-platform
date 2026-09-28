@@ -1,0 +1,52 @@
+{{- /*
+Steward's task API paths only. The Steward chart README lists every public
+API path and owns their meaning; the browser, admin and connection paths are
+left out because this edge serves no browser UI:
+https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md
+*/ -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: steward-task-api
+  labels:
+    app.kubernetes.io/name: steward-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  parentRefs:
+    {{- range .Values.parentRefs }}
+    - name: {{ .name | quote }}
+      namespace: {{ .namespace | quote }}
+      sectionName: {{ .sectionName | quote }}
+    {{- end }}
+  hostnames: [{{ .Values.hostname | quote }}]
+  rules:
+    - matches:
+        # OAuth protected-resource metadata: task-token discovery.
+        - path: { type: Exact, value: /.well-known/oauth-protected-resource }
+        # The Task API.
+        - path: { type: PathPrefix, value: /v1 }
+      backendRefs:
+        - name: steward-apiserver
+          port: {{ .Values.apiserverPort }}
+---
+# The apiserver serves TLS only. The Gateway verifies its certificate against
+# the public CA in the ConfigMap, for the Service's DNS identity.
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: steward-apiserver
+  labels:
+    app.kubernetes.io/name: steward-edge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: steward-apiserver
+      sectionName: https
+  validation:
+    hostname: {{ .Values.backendTls.hostname | quote }}
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: {{ .Values.backendTls.caConfigMapName | quote }}

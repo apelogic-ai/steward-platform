@@ -101,6 +101,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/verify-attestations.sh
 
+  signatures:
+    name: verify signatures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        run: scripts/ci/install-tools.sh cosign
+      - name: Verify product cosign bundles
+        run: scripts/verify-signatures.sh
+
   e2e-plan:
     name: plan e2e matrix
     runs-on: ubuntu-latest
@@ -137,3 +150,109 @@ jobs:
         env:
           K8S_VERSION: ${{ matrix.k8s }}
         run: tests/e2e/core/run.sh
+
+  e2e-task-auth:
+    name: task-auth e2e (Kubernetes ${{ matrix.k8s }})
+    needs: [validate, e2e-plan]
+    # Steward images are linux/amd64 only; ubuntu-latest is amd64.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # A real GitHub Actions OIDC token is the input under test.
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s: ${{ fromJSON(needs.e2e-plan.outputs.versions) }}
+    steps:
+      - name: Check for a GitHub OIDC token
+        id: oidc
+        run: |
+          if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice title=task-auth e2e skipped::No GitHub Actions OIDC token is available to this job (pull requests from forks cannot request one). The core e2e still runs."
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.oidc.outputs.available == 'true'
+        with:
+          persist-credentials: false
+      - name: Read pins from the BOM
+        if: steps.oidc.outputs.available == 'true'
+        id: bom
+        run: |
+          echo "identity-commit=$(jq -er '.products["github-oidc-exchange"].commit' bom/bom.json)" >> "${GITHUB_OUTPUT}"
+          echo "runner-node=$(node --version 2>/dev/null || echo none)" >> "${GITHUB_OUTPUT}"
+      # The steward-run action runs `node` from PATH and needs Node 24
+      # (apelogic-ai/steward-run#69); the runner image's default Node is
+      # reported, then replaced by a pinned Node 24.
+      - name: Report the runner's default Node
+        if: steps.oidc.outputs.available == 'true'
+        run: echo "::notice title=Runner default Node::${{ steps.bom.outputs.runner-node }}; the steward-run action needs Node 24, so this job sets it up explicitly."
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.oidc.outputs.available == 'true'
+        with:
+          node-version: 24.21.0
+      - name: Install check-jsonschema
+        if: steps.oidc.outputs.available == 'true'
+        run: pipx install check-jsonschema==0.38.2
+      - name: Install tools
+        if: steps.oidc.outputs.available == 'true'
+        run: scripts/ci/install-tools.sh kind helm helmfile kubectl yq
+      - name: Restore keyring-tool
+        if: steps.oidc.outputs.available == 'true'
+        id: keyring-tool
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/keyring-tool
+          key: keyring-tool-${{ steps.bom.outputs.identity-commit }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Build keyring-tool from the github-oidc-exchange source at the BOM commit
+        if: steps.oidc.outputs.available == 'true' && steps.keyring-tool.outputs.cache-hit != 'true'
+        run: scripts/ci/build-keyring-tool.sh "${RUNNER_TEMP}/keyring-tool/keyring-tool"
+      - name: Install the task-auth profile and check the edge
+        if: steps.oidc.outputs.available == 'true'
+        id: up
+        env:
+          K8S_VERSION: ${{ matrix.k8s }}
+          KEYRING_TOOL: ${{ runner.temp }}/keyring-tool/keyring-tool
+        run: tests/e2e/task-auth/run.sh up
+      # Check out the released action at the BOM's action commit (from the
+      # signed release manifest) and run it by path, so that a steward-run
+      # bump is a BOM edit. The code that runs is the action at that commit.
+      - name: Check out the steward-run action at the BOM action commit
+        if: steps.up.outcome == 'success'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: apelogic-ai/steward-run
+          ref: ${{ steps.up.outputs.action-commit }}
+          path: .task-auth/steward-run
+          persist-credentials: false
+      - name: Check the runner Node against the action's engines
+        if: steps.up.outcome == 'success'
+        run: tests/e2e/task-auth/run.sh check-node .task-auth/steward-run
+      - name: Run the steward-run action against Steward through the edge
+        if: steps.up.outcome == 'success'
+        id: steward-run
+        # Steward refuses the submission (the subject is not associated with a
+        # Steward user); verify asserts exactly that.
+        continue-on-error: true
+        uses: ./.task-auth/steward-run
+        env:
+          # steward-run's documented private-CA trust: extends Node's roots.
+          NODE_EXTRA_CA_CERTS: ${{ steps.up.outputs.edge-ca-file }}
+        with:
+          workflow: task-auth-probe@1
+          inputs: task-auth-probe/request.txt
+          outputs: task-auth-probe/out/result.txt
+          steward-api-url: ${{ steps.up.outputs.steward-api-url }}
+      - name: Verify the authentication chain and the negative cases
+        if: steps.up.outcome == 'success'
+        env:
+          STEWARD_RUN_OUTCOME: ${{ steps.steward-run.outcome }}
+          STEWARD_RUN_ACTION_PATH: .task-auth/steward-run
+        run: tests/e2e/task-auth/run.sh verify
+      - name: Remove the cluster
+        if: always() && steps.oidc.outputs.available == 'true'
+        run: tests/e2e/task-auth/run.sh down

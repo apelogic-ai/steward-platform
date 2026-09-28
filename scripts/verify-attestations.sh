@@ -3,7 +3,8 @@
 # artifacts. For every subject in products.<name>.provenance, require an
 # attestation signed by the declared workflow at the declared tag, built on a
 # GitHub-hosted runner, from the product's source repository at the pinned
-# commit. Artifacts a product does not attest are reported, not failed.
+# commit. Artifacts a product does not attest are reported, not failed;
+# artifacts signed with cosign bundles are verified by verify-signatures.sh.
 #
 # Usage: scripts/verify-attestations.sh [path/to/bom.json]
 # Needs: gh (authenticated, for example GH_TOKEN), jq.
@@ -33,7 +34,9 @@ entries="$(jq -r '
       (if $prov then "https://github.com/\($prov.signerWorkflow)@\($prov.sourceRef)" else "-" end),
       (if $prov then $prov.predicateType else "-" end),
       $p.source, $p.commit,
-      (if $prov and ($prov.subjects | index($subject)) then "yes" else "no" end)
+      (if $prov and ($prov.subjects | index($subject)) then "yes"
+       elif ($p.signatures.subjects // {} | has($subject)) then "cosign"
+       else "no" end)
     ]
   | @tsv
 ' "${bom}")"
@@ -41,11 +44,16 @@ entries="$(jq -r '
 failures=0
 verified=0
 unattested=()
+signed=()
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
 while IFS=$'\t' read -r product subject uri owner identity predicate source commit attested; do
   label="products.${product}.${subject}"
+  if [[ "${attested}" == cosign ]]; then
+    signed+=("${label}")
+    continue
+  fi
   if [[ "${attested}" != yes ]]; then
     unattested+=("${label} (${uri})")
     continue
@@ -73,6 +81,9 @@ while IFS=$'\t' read -r product subject uri owner identity predicate source comm
   echo "ok   ${label}: ${identity}, commit ${commit}"
 done <<<"${entries}"
 
+if [[ "${#signed[@]}" != 0 ]]; then
+  printf 'info signed with cosign bundles instead, see scripts/verify-signatures.sh: %s\n' "${signed[@]}"
+fi
 if [[ "${#unattested[@]}" != 0 ]]; then
   printf 'info not attested upstream, not verified: %s\n' "${unattested[@]}"
 fi

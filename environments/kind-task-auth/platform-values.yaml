@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../schemas/platform-values/v1.schema.json
+#
+# Evaluation install of the task-auth profile on a local kind cluster created
+# from ../kind/kind-config.yaml. The core part is the same as ../kind. On top,
+# it installs Envoy Gateway with an evaluation Gateway (its listener
+# certificate comes from a second self-signed CA), routes Steward's task API
+# and the github-oidc-exchange issuer through it, and installs
+# github-oidc-exchange. Not for production.
+#
+# The public hostnames are under the reserved .test domain and resolve
+# nowhere: point them at a port-forward of the Gateway (see
+# docs/profiles/task-auth.md). Before installing, create the operator-owned
+# inputs that identityExchange names: the exchange policy ConfigMap and
+# keyring Secret, and Steward's copy of the public JWKS.
+apiVersion: steward-platform/v1
+kind: PlatformValues
+environment: kind-task-auth
+purpose: evaluation
+profile: task-auth
+
+cluster:
+  domain: cluster.local
+  serviceAccountTokenAudience: https://kubernetes.default.svc.cluster.local
+  dnsNamespace: kube-system
+  kubeApi:
+    cidrs: [10.96.0.1/32]
+    port: 443
+
+namespaces:
+  steward: steward
+  certManager: cert-manager
+  identityExchange: identity
+
+serviceAccounts:
+  identityExchange:
+    annotations: {}
+
+tls:
+  mode: certManager
+  certManager:
+    install: true
+    issuer:
+      source: evaluation
+
+database:
+  source: evaluation
+  secret:
+    name: steward-database
+    key: url
+  cidrs: [10.244.0.0/16]
+  port: 5432
+  tls:
+    mode: disabled
+
+networkPolicy:
+  # Envoy Gateway runs its Envoy proxies in its own namespace.
+  edgeNamespace: envoy-gateway-system
+
+publicEndpoints:
+  steward: https://steward.platform.test
+  identityIssuer: https://identity.platform.test
+
+audiences:
+  taskApi: steward-task-api
+
+edge:
+  install: true
+  gateway:
+    source: evaluation
+    name: steward-platform-edge
+    namespace: envoy-gateway-system
+    listener: https
+  # Envoy proxy pods have no fixed address: the kind pod subnet.
+  clientCidrs: [10.244.0.0/16]
+  stewardBackendCaConfigMap: steward-apiserver-ca
+
+identityExchange:
+  githubAudience: steward-platform-task-auth
+  policy:
+    contract: github-oidc-exchange.apelogic.io/v6
+    configMapName: github-oidc-exchange-policy-v6
+    revision: v6-rev-1
+  keyring:
+    secretName: github-oidc-exchange-keyring
+    revision: rev-1
+  publicJwksConfigMap:
+    name: github-oidc-exchange-jwks
+    key: jwks.json

@@ -30,8 +30,10 @@ releases are planned in
 To bump a product:
 
 1. Take the coordinates from the product's own release metadata, not from a
-   tag lookup. For Steward, that is `release-handoff.json` on the GitHub
-   release. Verify it first, as the release notes describe.
+   tag lookup: `release-handoff.json` for Steward, `release-manifest.json` for
+   github-oidc-exchange and `oss-release-manifest.json` for steward-run (its
+   `actionCommit` is `action.commit`), all on the GitHub release. Verify the
+   metadata first, as the release notes describe.
 2. Update the product entry: `version`, `commit`, `release`, the chart version
    and digest, every image reference, and `provenance.sourceRef`.
 3. Bump `platformVersion`. The platform uses calendar versions
@@ -47,6 +49,7 @@ To bump a product:
    scripts/validate-bom.sh
    scripts/verify-digests.sh
    GH_TOKEN=... scripts/verify-attestations.sh
+   scripts/verify-signatures.sh
    tests/generate/run.sh
    FLUX_SCHEMAS_DIR=... tests/flux/run.sh
    ```

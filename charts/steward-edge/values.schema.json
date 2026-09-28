@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hostname", "parentRefs", "backendTls", "apiserverPort"],
+  "properties": {
+    "hostname": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "parentRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "namespace", "sectionName"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "namespace": { "type": "string", "minLength": 1 },
+          "sectionName": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "backendTls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname", "caConfigMapName"],
+      "properties": {
+        "hostname": { "type": "string", "pattern": "^steward-apiserver\\.[a-z0-9-]+\\.svc\\.[a-z0-9.-]+$" },
+        "caConfigMapName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "apiserverPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+  }
+}

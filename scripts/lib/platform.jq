@@ -4,6 +4,8 @@
 # Every chart key set here is documented by the chart that owns it. The
 # Steward keys come from its v0.3.1 chart:
 # https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.yaml
+# and the github-oidc-exchange keys from its v0.7.1 chart:
+# https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.1/charts/github-oidc-exchange/values.yaml
 
 # --- Reserved fields ---------------------------------------------------------
 
@@ -45,6 +47,11 @@ def chart_ref: "\(.reference)@\(.digest)";
 
 def evaluation_issuer_name: "steward-platform-evaluation-ca";
 def evaluation_postgres_name: "postgresql-evaluation";
+def evaluation_edge_issuer_name: "steward-platform-edge-ca";
+def evaluation_gateway_class_name: "steward-platform-evaluation";
+
+# github-oidc-exchange: the chart's fixed ServiceAccount name.
+def identity_service_account_name: "github-oidc-exchange";
 
 # --- Derived settings --------------------------------------------------------
 
@@ -52,6 +59,20 @@ def uses_cert_manager: .tls.mode == "certManager";
 def installs_cert_manager: uses_cert_manager and .tls.certManager.install;
 def uses_evaluation_issuer: uses_cert_manager and .tls.certManager.issuer.source == "evaluation";
 def uses_evaluation_database: .database.source == "evaluation";
+def task_auth: .profile == "task-auth";
+def installs_edge: task_auth and .edge.install;
+def uses_evaluation_gateway: task_auth and .edge.gateway.source == "evaluation";
+
+# https://host -> host
+def origin_host: ltrimstr("https://");
+
+# Steward's API Service DNS identity, which its certificate carries and the
+# edge verifies.
+def steward_api_hostname: "steward-apiserver.\(.namespaces.steward).svc.\(.cluster.domain)";
+
+# The Gateway listener both public hostnames attach to.
+def edge_parent_refs:
+  [{name: .edge.gateway.name, namespace: .edge.gateway.namespace, sectionName: .edge.gateway.listener}];
 
 # --- Chart values ------------------------------------------------------------
 
@@ -108,11 +129,34 @@ def steward_values($bom; $ca_bundle):
         dnsNamespace: $v.cluster.dnsNamespace,
         kubeApiCidrs: $v.cluster.kubeApi.cidrs,
         postgresCidrs: $v.database.cidrs,
-        apiserverIngressNamespaces: ($v.networkPolicy.apiserverIngressNamespaces // []),
+        # The edge reaches the API as a direct caller: the chart's
+        # ingressNamespace only applies with its browser web UI enabled.
+        apiserverIngressNamespaces: (
+          ($v.networkPolicy.apiserverIngressNamespaces // [])
+          + (if $v | task_auth then [$v.networkPolicy.edgeNamespace] else [] end)
+          | reduce .[] as $n ([]; if index([$n]) then . else . + [$n] end)
+        ),
         ports: {kubernetesApi: $v.cluster.kubeApi.port, postgres: $v.database.port}
       },
       services: {clusterDomain: $v.cluster.domain}
-    };
+    }
+  + (if $v | task_auth then
+      {
+        # Task tokens from github-oidc-exchange, verified against its public
+        # JWKS. Policy v6 issues steward-task-v3, which needs federated
+        # subjects; the resource enables the protected-resource metadata.
+        taskIdentity: {
+          enabled: true,
+          issuer: $v.publicEndpoints.identityIssuer,
+          audience: $v.audiences.taskApi,
+          resource: $v.publicEndpoints.steward,
+          federatedSubjects: {
+            enabled: ($v.identityExchange.policy.contract == "github-oidc-exchange.apelogic.io/v6")
+          },
+          publicJwksConfigMap: $v.identityExchange.publicJwksConfigMap
+        }
+      }
+    else {} end);
 
 # cert-manager chart values: CRDs as templates (so upgrades update them) and
 # every image pinned to its BOM digest.
@@ -132,6 +176,92 @@ def cert_manager_values($bom):
 # Values for charts/evaluation-ca in this repository.
 def evaluation_ca_values:
   {name: evaluation_issuer_name};
+
+# github-oidc-exchange chart values. The policy ConfigMap and keyring Secret
+# are referenced, never created. Workload exchange and browser HOP-1 stay off.
+def identity_values($bom):
+  . as $v
+  | ($bom.products["github-oidc-exchange"].images.exchange | image_parts) as $image
+  | {
+      image: {repository: $image.repository, tag: $image.tag, digest: $image.digest},
+      serviceAccount: {
+        create: true,
+        name: identity_service_account_name,
+        annotations: ($v.serviceAccounts.identityExchange.annotations // {})
+      },
+      config: {
+        issuerUrl: $v.publicEndpoints.identityIssuer,
+        githubExchangeAudience: $v.identityExchange.githubAudience,
+        outputAudience: $v.audiences.taskApi,
+        policyContract: $v.identityExchange.policy.contract,
+        policyConfigMapName: $v.identityExchange.policy.configMapName,
+        keyringSecretName: $v.identityExchange.keyring.secretName
+      },
+      rolloutRevisions: {
+        githubPolicy: $v.identityExchange.policy.revision,
+        githubKeyring: $v.identityExchange.keyring.revision
+      },
+      httpRoute: {
+        enabled: true,
+        parentRefs: ($v | edge_parent_refs),
+        hostnames: [$v.publicEndpoints.identityIssuer | origin_host]
+      },
+      networkPolicy: {
+        enabled: true,
+        ingressCidrs: $v.edge.clientCidrs,
+        dnsNamespaceSelector: {"kubernetes.io/metadata.name": $v.cluster.dnsNamespace}
+      }
+    };
+
+# Envoy Gateway, without its bundled CRDs, with the controller and proxy
+# images pinned to their BOM digests. The Gateway API CRDs (standard channel)
+# and Envoy Gateway's own CRDs are the BOM manifests, which the helmfile
+# server-side applies first (scripts/apply-manifests.sh).
+# https://github.com/envoyproxy/gateway/blob/v1.9.1/charts/gateway-helm/values.yaml
+def envoy_gateway_values($bom):
+  ($bom.dependencies["envoy-gateway"].images) as $images
+  | {
+      crds: {enabled: false},
+      global: {
+        images: {
+          envoyGateway: {image: $images.controller},
+          envoyProxy: {image: $images.proxy}
+        }
+      }
+    };
+
+# Values for charts/steward-edge in this repository: Steward's task API routes.
+def steward_edge_values:
+  . as $v
+  | {
+      hostname: ($v.publicEndpoints.steward | origin_host),
+      parentRefs: ($v | edge_parent_refs),
+      backendTls: {
+        hostname: ($v | steward_api_hostname),
+        caConfigMapName: $v.edge.stewardBackendCaConfigMap
+      }
+    };
+
+# Values for the evaluation edge CA: charts/evaluation-ca again, in the
+# Gateway namespace.
+def edge_evaluation_ca_values:
+  {name: evaluation_edge_issuer_name};
+
+# Values for charts/evaluation-edge in this repository.
+def evaluation_edge_values:
+  . as $v
+  | {
+      gatewayClassName: evaluation_gateway_class_name,
+      gateway: {name: $v.edge.gateway.name, listener: $v.edge.gateway.listener},
+      hostnames: [$v.publicEndpoints.steward, $v.publicEndpoints.identityIssuer | origin_host],
+      routeNamespaces: [$v.namespaces.steward, $v.namespaces.identityExchange],
+      issuerName: evaluation_edge_issuer_name,
+      stewardCa: {
+        namespace: $v.namespaces.steward,
+        secretName: evaluation_issuer_name,
+        configMapName: $v.edge.stewardBackendCaConfigMap
+      }
+    };
 
 # Values for charts/postgresql-evaluation in this repository.
 def postgresql_evaluation_values($bom):
@@ -153,7 +283,16 @@ def helmfile_environment($bom):
       environment: $v.environment,
       purpose: $v.purpose,
       profile: $v.profile,
-      namespaces: {steward: $v.namespaces.steward, certManager: $v.namespaces.certManager},
+      namespaces: (
+        {steward: $v.namespaces.steward, certManager: $v.namespaces.certManager}
+        + (if $v | task_auth then
+            {
+              identityExchange: $v.namespaces.identityExchange,
+              edge: $v.networkPolicy.edgeNamespace,
+              gateway: $v.edge.gateway.namespace
+            }
+          else {} end)
+      ),
       releases: {
         certManager: {
           enabled: ($v | installs_cert_manager),
@@ -165,7 +304,24 @@ def helmfile_environment($bom):
         steward: {
           chart: ($bom.products.steward.chart | chart_ref),
           version: $bom.products.steward.chart.version
-        }
+        },
+        envoyGateway: (
+          {enabled: ($v | installs_edge)}
+          + (if $v | installs_edge then
+              {chart: ($bom.dependencies["envoy-gateway"].chart | chart_ref),
+               version: $bom.dependencies["envoy-gateway"].chart.version}
+            else {} end)
+        ),
+        edgeEvaluationCa: {enabled: ($v | uses_evaluation_gateway)},
+        evaluationEdge: {enabled: ($v | uses_evaluation_gateway)},
+        stewardEdge: {enabled: ($v | task_auth)},
+        identityExchange: (
+          {enabled: ($v | task_auth)}
+          + (if $v | task_auth then
+              {chart: ($bom.products["github-oidc-exchange"].chart | chart_ref),
+               version: $bom.products["github-oidc-exchange"].chart.version}
+            else {} end)
+        )
       }
     };
 
@@ -219,7 +375,8 @@ def flux_helm_release($name; $namespace; $depends_on; $crds_on_upgrade; $values)
 # The Flux example covers the BOM charts only. Evaluation pieces are in-repo
 # charts that the helmfile installs; an environment that uses them gets no
 # Flux output.
-def flux_supported: (uses_evaluation_issuer or uses_evaluation_database) | not;
+# The Flux output covers the core profile only for now.
+def flux_supported: .profile == "core" and ((uses_evaluation_issuer or uses_evaluation_database) | not);
 
 def flux_files($bom; $ca_bundle):
   . as $v
@@ -253,4 +410,15 @@ def generate($bom; $ca_bundle):
   + (if $v | installs_cert_manager then {"values/cert-manager.yaml": cert_manager_values($bom)} else {} end)
   + (if $v | uses_evaluation_issuer then {"values/evaluation-ca.yaml": evaluation_ca_values} else {} end)
   + (if $v | uses_evaluation_database then {"values/postgresql-evaluation.yaml": ($v | postgresql_evaluation_values($bom))} else {} end)
+  + (if $v | task_auth then
+      {"values/github-oidc-exchange.yaml": ($v | identity_values($bom)),
+       "values/steward-edge.yaml": ($v | steward_edge_values)}
+    else {} end)
+  + (if $v | installs_edge then
+      {"values/envoy-gateway.yaml": envoy_gateway_values($bom)}
+    else {} end)
+  + (if $v | uses_evaluation_gateway then
+      {"values/edge-evaluation-ca.yaml": edge_evaluation_ca_values,
+       "values/evaluation-edge.yaml": ($v | evaluation_edge_values)}
+    else {} end)
   + (if $v | flux_supported then $v | flux_files($bom; $ca_bundle) else {} end);

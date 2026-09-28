@@ -90,7 +90,21 @@ Helm creates no Steward users, grants, templates or Envelopes. Administration
 after install is Steward's:
 [post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
 
-## 6. Governed mode (outline)
+## 6. Task authentication (task-auth profile)
+
+The [task-auth profile](profiles/task-auth.md) adds, after core: the Gateway
+API CRDs and Envoy Gateway (unless the cluster already runs a Gateway API
+implementation with BackendTLSPolicy support), the operator inputs of
+github-oidc-exchange (its policy ConfigMap and keyring Secret, and Steward's
+copy of its public JWKS), Steward's task identity settings, the edge routes,
+and github-oidc-exchange itself. The
+[helmfile](../helmfile/README.md) orders them with `needs`, and the
+[task-auth end-to-end test](../tests/e2e/task-auth/README.md) proves them
+with the steward-run action. It stops before Envelope admission: that needs
+a Steward canonical user, which only a browser login creates (step 5 of the
+governed sequence below).
+
+## 7. Governed mode (outline)
 
 Not yet a reference install; tracked in
 [#3](https://github.com/apelogic-ai/steward-platform/issues/3), which adds

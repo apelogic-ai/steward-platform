@@ -16,10 +16,14 @@ The platform is four independently released products:
 | github-oidc-exchange | [apelogic-ai/github-oidc-exchange](https://github.com/apelogic-ai/github-oidc-exchange) | Exchanges GitHub Actions OIDC tokens for task identity |
 | mcp-gw | [apelogic-ai/mcp-gw](https://github.com/apelogic-ai/mcp-gw) | MCP gateway for governed tool access |
 
-Two install profiles are defined:
+Three install profiles are defined:
 
 - **core**: Steward alone, with a PostgreSQL database and cert-manager for its
   service certificates. No agent execution.
+- **task-auth**: core plus github-oidc-exchange behind an Envoy Gateway edge,
+  exercised by the steward-run GitHub Action. Proves Task authentication with
+  real GitHub Actions OIDC; no agent execution. See
+  [docs/profiles/task-auth.md](docs/profiles/task-auth.md).
 - **governed**: core plus the other three products and the external
   dependencies that governed execution needs (workload identity, sandboxing,
   inference proxy, runners). Not yet covered; see
@@ -111,12 +115,14 @@ installed by the reference installs in every environment; an operator who
 already runs it can keep their own.
 
 CI validates the BOM, checks that every digest resolves anonymously, and
-verifies the product attestations. See [docs/verification.md](docs/verification.md).
+verifies the product attestations and signatures. See [docs/verification.md](docs/verification.md).
 
 ## Status
 
-Pre-release. The current BOM (`2026.10.0-alpha.2`) pins the core profile only:
-Steward 0.3.1, cert-manager for service TLS, and PostgreSQL 16 for evaluation.
+Pre-release. The current BOM (`2026.10.0-alpha.3`) pins the core and task-auth
+profiles: Steward 0.3.1, github-oidc-exchange 0.7.1 and steward-run 0.7.1, with
+cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for evaluation,
+PostgreSQL 16.
 There are no platform releases yet.
 
 ## Contributing and security

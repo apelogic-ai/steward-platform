@@ -1,5 +1,5 @@
-# Reference install of the Steward platform, core profile. See README.md in
-# this directory.
+# Reference install of the Steward platform, core and task-auth profiles. See
+# README.md in this directory.
 #
 # Every input comes from scripts/generate.sh, which reads one platform values
 # file and the BOM. Generate first, then pick the matching environment:
@@ -16,6 +16,9 @@ environments:
   kind:
     values:
       - {{ $root }}/kind/helmfile.yaml
+  kind-task-auth:
+    values:
+      - {{ $root }}/kind-task-auth/helmfile.yaml
   production:
     values:
       - {{ $root }}/production/helmfile.yaml
@@ -84,3 +87,91 @@ releases:
     {{- end }}
     values:
       - {{ $generated }}/steward.yaml
+
+{{- if $releases.envoyGateway.enabled }}
+
+  # task-auth: Envoy Gateway from the BOM, pinned by chart digest, without its
+  # bundled CRDs. Its Envoy proxies run in this namespace. First, the BOM's
+  # Gateway API (standard channel) and Envoy Gateway CRD manifests are
+  # checked against their digests and server-side applied, so upgrades update
+  # them (Envoy Gateway's CRD chart is too large for a Helm release).
+  - name: envoy-gateway
+    namespace: {{ $ns.edge }}
+    chart: {{ $releases.envoyGateway.chart }}
+    hooks:
+      - events: ["presync"]
+        showlogs: true
+        # Hooks run in this directory, against PLATFORM_KUBE_CONTEXT or else
+        # the current kubeconfig context.
+        command: ../scripts/apply-manifests.sh
+        args:
+          - --context
+          - "{{ env "PLATFORM_KUBE_CONTEXT" }}"
+          - gateway-api-crds
+          - envoy-gateway
+    values:
+      - {{ $generated }}/envoy-gateway.yaml
+{{- end }}
+
+{{- if $releases.edgeEvaluationCa.enabled }}
+
+  # Evaluation only: a second self-signed CA, for the edge listener
+  # certificate.
+  - name: edge-evaluation-ca
+    namespace: {{ $ns.gateway }}
+    chart: ../charts/evaluation-ca
+    {{- if $releases.certManager.enabled }}
+    needs:
+      - {{ $ns.certManager }}/cert-manager
+    {{- end }}
+    values:
+      - {{ $generated }}/edge-evaluation-ca.yaml
+{{- end }}
+
+{{- if $releases.evaluationEdge.enabled }}
+
+  # Evaluation only: the Envoy Gateway GatewayClass and Gateway, and the public
+  # ConfigMap of the evaluation Steward CA (read from the cluster, so Steward
+  # goes first).
+  - name: evaluation-edge
+    namespace: {{ $ns.gateway }}
+    chart: ../charts/evaluation-edge
+    needs:
+      - {{ $ns.edge }}/envoy-gateway
+      - {{ $ns.gateway }}/edge-evaluation-ca
+      - {{ $ns.steward }}/steward
+    values:
+      - {{ $generated }}/evaluation-edge.yaml
+{{- end }}
+
+{{- if $releases.stewardEdge.enabled }}
+
+  # task-auth: Steward's task API routes and the BackendTLSPolicy to the
+  # apiserver.
+  - name: steward-edge
+    namespace: {{ $ns.steward }}
+    chart: ../charts/steward-edge
+    needs:
+      - {{ $ns.steward }}/steward
+      {{- if $releases.envoyGateway.enabled }}
+      - {{ $ns.edge }}/envoy-gateway
+      {{- end }}
+    values:
+      - {{ $generated }}/steward-edge.yaml
+{{- end }}
+
+{{- if $releases.identityExchange.enabled }}
+
+  # task-auth: github-oidc-exchange from the BOM, pinned by chart digest
+  # (version {{ $releases.identityExchange.version }}). Its policy ConfigMap and
+  # keyring Secret must exist first; the chart only references them.
+  - name: github-oidc-exchange
+    namespace: {{ $ns.identityExchange }}
+    chart: {{ $releases.identityExchange.chart }}
+    {{- if $releases.envoyGateway.enabled }}
+    needs:
+      - {{ $ns.edge }}/envoy-gateway
+    {{- end }}
+    values:
+      - {{ $generated }}/github-oidc-exchange.yaml
+{{- end }}
