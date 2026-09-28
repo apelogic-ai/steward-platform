@@ -17,10 +17,14 @@
 #   values/envoy-gateway.yaml           task-auth, browser-admin, when edge.install is true
 #   values/edge-evaluation-ca.yaml      task-auth, browser-admin, when the evaluation Gateway is used
 #   values/evaluation-edge.yaml         task-auth, browser-admin, when the evaluation Gateway is used
-#   flux/                               Flux OCIRepository and HelmRelease objects for
-#                                       the same install, for the core profile when no
-#                                       evaluation piece is used (examples/flux/core is
-#                                       this, for production)
+#   flux/                               Flux objects for the same install, when no
+#                                       evaluation piece is used: OCIRepository and
+#                                       HelmRelease per release; for task-auth and
+#                                       browser-admin with edge.install, also the CRD
+#                                       sources and Kustomizations, and for task-auth
+#                                       charts/steward-edge from this repository
+#                                       (examples/flux/<profile> is this, for the
+#                                       production-shaped environments)
 #
 # The output depends only on the two inputs: the same inputs give the same
 # bytes. Needs: jq 1.7+, yq (mikefarah) v4, check-jsonschema.

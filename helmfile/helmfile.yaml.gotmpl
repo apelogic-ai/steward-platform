@@ -25,6 +25,12 @@ environments:
   production:
     values:
       - {{ $root }}/production/helmfile.yaml
+  production-task-auth:
+    values:
+      - {{ $root }}/production-task-auth/helmfile.yaml
+  production-browser-admin:
+    values:
+      - {{ $root }}/production-browser-admin/helmfile.yaml
 ---
 {{- $generated := printf "%s/%s/values" (env "PLATFORM_GENERATED_DIR" | default "../generated") .Environment.Name }}
 {{- $releases := .Values.releases }}

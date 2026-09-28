@@ -11,6 +11,7 @@ stack: nothing runs.
 |---|---|
 | BOM profile | `browser-admin` in [`bom/bom.json`](../../bom/bom.json) |
 | Reference install | [`environments/kind-browser-admin`](../../environments/kind-browser-admin/platform-values.yaml) through the [generator](../platform-values.md#implemented-browser-admin) and the [helmfile](../../helmfile/README.md) |
+| Flux | [`examples/flux/browser-admin`](../../examples/flux/browser-admin/README.md), generated from the production shape [`environments/production-browser-admin`](../../environments/production-browser-admin/platform-values.yaml) |
 | Test | [`tests/e2e/browser-admin`](../../tests/e2e/browser-admin/README.md), in CI on every tested Kubernetes version and nightly, without a real Google login |
 | Evaluate it | [local access](../browser-admin/local-access.md), then the [first-admin runbook](../browser-admin/first-admin.md) and the [walkthrough](../browser-admin/walkthrough.md) |
 | Tracking | [#10](https://github.com/apelogic-ai/steward-platform/issues/10) |
@@ -113,7 +114,8 @@ browser (workstation)                       kind cluster
 - **Production egress.** CI opens `0.0.0.0/0` on 443; production CIDRs for
   Google are yours to maintain.
 - **Execution**, and everything task-auth does not prove.
-- **Flux**: the generator writes Flux output for the core profile only.
+- **A Flux install.** CI checks the [Flux output](#flux) statically against
+  the helmfile; the end-to-end test installs through the helmfile.
 
 ## Known limitations
 
@@ -145,6 +147,16 @@ browser (workstation)                       kind cluster
 - **Google redirect URIs need a public suffix.** The committed kind hostname
   under `.test` is for CI; a real sign-in needs a hostname under a domain on
   the public suffix list ([local access](../browser-admin/local-access.md#choose-the-steward-hostname)).
+
+## Flux
+
+The generator writes Flux objects for browser-admin in its production shape,
+as for [task-auth](task-auth.md#flux): the same releases, `dependsOn` order and
+values as the helmfile, the edge CRDs as Flux `Kustomization`s, and no
+evaluation piece. Steward renders its own routes, so it follows envoy-gateway
+and there is no `steward-edge` release. The operator also supplies the Google
+client Secret and literal browser-auth egress CIDRs. Details:
+[`examples/flux/browser-admin`](../../examples/flux/browser-admin/README.md).
 
 ## Run it
 

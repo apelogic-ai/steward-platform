@@ -122,7 +122,48 @@
       "required": ["url", "digest"],
       "properties": {
         "url": { "$ref": "#/$defs/httpsUrl" },
-        "digest": { "$ref": "#/$defs/digest" }
+        "digest": { "$ref": "#/$defs/digest" },
+        "fluxSource": { "$ref": "#/$defs/fluxSource" }
+      }
+    },
+    "sourcePath": {
+      "description": "Relative directory path, without a leading slash; no segment starts with a dot.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+      "maxLength": 255
+    },
+    "fluxSource": {
+      "description": "Where the Flux reference install takes this manifest's objects from. Flux has no source for an HTTPS file checked by SHA-256, so the objects come from a source Flux pins itself: a directory of a Git repository at a commit, or a directory of the dependency's own BOM chart at its digest. tests/flux/run.sh checks that the directory, at its pin, holds exactly the objects of the pinned manifest.",
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [{ "required": ["git"] }, { "required": ["chart"] }],
+      "properties": {
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "tag", "commit", "path"],
+          "properties": {
+            "repository": { "$ref": "#/$defs/githubRepository" },
+            "tag": {
+              "description": "The release tag, for readers and for scripts/verify-digests.sh; Flux checks out the commit.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+            },
+            "commit": { "$ref": "#/$defs/commit" },
+            "path": { "$ref": "#/$defs/sourcePath" }
+          }
+        },
+        "chart": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "description": "Directory inside the extracted chart archive, starting with the chart's own directory.",
+              "$ref": "#/$defs/sourcePath"
+            }
+          }
+        }
       }
     },
     "provenance": {

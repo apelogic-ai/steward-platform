@@ -58,9 +58,9 @@ jobs:
         run: tests/generate/run.sh
 
   flux:
-    name: Flux example
+    name: Flux examples
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,9 +68,22 @@ jobs:
       - name: Install check-jsonschema
         run: pipx install check-jsonschema==0.38.2
       - name: Install tools
-        run: scripts/ci/install-tools.sh helm kubeconform flux-schemas yq
-      - name: Check the Flux example against the BOM and the Flux schemas
+        run: scripts/ci/install-tools.sh helm helmfile kubeconform flux-schemas yq
+      - name: Check the Flux examples against the BOM, the helmfile and the Flux schemas
         run: tests/flux/run.sh
+
+  flux-reconcile:
+    name: Flux reconcile (task-auth edge)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        run: scripts/ci/install-tools.sh kind kubectl yq flux-install
+      - name: Reconcile the task-auth CRD sources, Envoy Gateway and steward-edge with Flux
+        run: tests/flux/reconcile.sh
 
   digests:
     name: verify digests

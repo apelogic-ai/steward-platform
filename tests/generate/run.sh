@@ -152,6 +152,19 @@ check_environment() {
     fail "${name}: two runs differ"
   fi
 
+  # Flux output for the production shape only: none when an evaluation piece
+  # (CA, PostgreSQL or Gateway) is used, since only the helmfile installs them.
+  local evaluation
+  evaluation="$(yq -r '.tls.certManager.issuer.source == "evaluation" or .database.source == "evaluation"
+    or .edge.gateway.source == "evaluation"' "${values}")"
+  if [[ "${evaluation}" == true && ! -e "${out}/flux" ]]; then
+    pass "${name}: no Flux output, as the environment uses evaluation pieces"
+  elif [[ "${evaluation}" == false && -f "${out}/flux/kustomization.yaml" ]]; then
+    pass "${name}: Flux output generated"
+  else
+    fail "${name}: Flux output present is $([[ -e "${out}/flux" ]] && echo yes || echo no), evaluation pieces ${evaluation}"
+  fi
+
   local namespace
   namespace="$(yq -r .namespaces.steward "${out}/helmfile.yaml")"
   if helm lint "${steward_chart}" -f "${out}/values/steward.yaml" >"${work}/lint.log" 2>&1 \

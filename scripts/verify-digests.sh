@@ -6,13 +6,16 @@
 # digest is what gets installed either way.
 #
 # Usage: scripts/verify-digests.sh [path/to/bom.json]
-# Needs: crane, jq, curl, sha256sum (or shasum).
+# A manifest's Git fluxSource is checked the same way: its tag still names its
+# commit, or a warning (Flux checks out the commit either way).
+#
+# Needs: crane, jq, curl, git, sha256sum (or shasum).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bom="${1:-${repo_root}/bom/bom.json}"
 
-for tool in crane jq curl; do
+for tool in crane jq curl git; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
 done
 
@@ -26,7 +29,8 @@ sha256_of() {
 }
 
 # One line per artifact: kind <TAB> label <TAB> name:tag <TAB> digest
-# (for manifests: url in place of name:tag).
+# (for manifests: url in place of name:tag; for Git sources: repository and
+# tag, and the commit in place of the digest).
 entries="$(jq -r '
   def image($label): capture("^(?<name>[^@]+)@(?<digest>sha256:[a-f0-9]{64})$")
     | ["image", $label, .name, .digest];
@@ -34,7 +38,9 @@ entries="$(jq -r '
     to_entries[] | .key as $k | .value
     | ((.images // {}) | to_entries[] | .key as $c | .value | image("\($kind).\($k).images.\($c)"))
     , (.chart // empty | ["chart", "\($kind).\($k).chart", "\(.reference | ltrimstr("oci://")):\(.version)", .digest])
-    , ((.manifests // [])[] | ["manifest", "\($kind).\($k).manifests", .url, .digest]);
+    , ((.manifests // [])[] | ["manifest", "\($kind).\($k).manifests", .url, .digest])
+    , ((.manifests // [])[] | .fluxSource.git // empty
+        | ["git", "\($kind).\($k).manifests.fluxSource", "\(.repository) \(.tag)", .commit]);
   (.products | artifacts("products")),
   (.dependencies | artifacts("dependencies")),
   (.kubernetes.tested[] | .version as $v | .nodeImage | image("kubernetes.tested.\($v)"))
@@ -80,6 +86,26 @@ while IFS=$'\t' read -r kind label name digest; do
         failures=$((failures + 1))
       else
         echo "ok   ${label}: ${name}"
+      fi
+      ;;
+    git)
+      repository="${name% *}"
+      tag="${name##* }"
+      # An annotated tag lists its commit as the peeled ^{} ref.
+      if ! refs="$(git ls-remote "${repository}" "refs/tags/${tag}" "refs/tags/${tag}^{}" 2>&1)"; then
+        echo "FAIL ${label}: ${repository} could not be listed: ${refs}" >&2
+        failures=$((failures + 1))
+        continue
+      fi
+      tagged="$(awk -v tag="refs/tags/${tag}" '$2 == tag "^{}" { peeled = $1 } $2 == tag { plain = $1 }
+        END { print (peeled != "" ? peeled : plain) }' <<<"${refs}")"
+      if [[ -z "${tagged}" ]]; then
+        echo "FAIL ${label}: ${repository} has no tag ${tag}" >&2
+        failures=$((failures + 1))
+      elif [[ "${tagged}" != "${digest}" ]]; then
+        echo "warn ${label}: tag ${tag} of ${repository} now names ${tagged}; Flux checks out the pinned ${digest}"
+      else
+        echo "ok   ${label}: ${repository} ${tag} at ${digest}"
       fi
       ;;
   esac

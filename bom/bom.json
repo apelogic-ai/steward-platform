@@ -164,7 +164,15 @@
       "manifests": [
         {
           "url": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml",
-          "digest": "sha256:24d931f22abd8e40c973264319ead7cfa09d0fb7716b7ab1ee2ff174cb063a73"
+          "digest": "sha256:24d931f22abd8e40c973264319ead7cfa09d0fb7716b7ab1ee2ff174cb063a73",
+          "fluxSource": {
+            "git": {
+              "repository": "https://github.com/kubernetes-sigs/gateway-api",
+              "tag": "v1.6.1",
+              "commit": "8bb74df00e56ec8f944d48c25e6c1c9c2f6848e3",
+              "path": "config/crd/standard"
+            }
+          }
         }
       ]
     },
@@ -186,7 +194,12 @@
       "manifests": [
         {
           "url": "https://github.com/envoyproxy/gateway/releases/download/v1.9.1/envoy-gateway-crds.yaml",
-          "digest": "sha256:613fac22b8673735e97fd2523098974bd74cb0cc78e444602b3383d1217b8aab"
+          "digest": "sha256:613fac22b8673735e97fd2523098974bd74cb0cc78e444602b3383d1217b8aab",
+          "fluxSource": {
+            "chart": {
+              "path": "gateway-helm/charts/crds/crds/generated"
+            }
+          }
         }
       ]
     }

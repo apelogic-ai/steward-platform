@@ -53,6 +53,11 @@ errors="$(jq -r '
         | select((.value.requiredFor | sort) != $listed)
         | "dependency \($name): requiredFor \(.value.requiredFor | sort) does not match profiles \($listed)"),
 
+      # A manifest taken from the chart of its dependency needs that chart.
+      ($bom.dependencies | to_entries[] | .key as $name | .value as $d
+        | ($d.manifests // [])[] | select(.fluxSource.chart != null and $d.chart == null)
+        | "dependency \($name): manifest \(.url) takes fluxSource.chart, but the dependency pins no chart"),
+
       # Products: release page and attestation subjects are consistent.
       ($bom.products | to_entries[] | .key as $name | .value as $p
         | (
