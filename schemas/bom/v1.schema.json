@@ -227,6 +227,13 @@
             "commit": { "$ref": "#/$defs/commit" }
           }
         },
+        "plannedFor": {
+          "description": "Profiles that will include this product but are not implemented in this BOM yet. The product's artifacts are pinned and verified like any other product's (digests, and attestations or signatures), but no profile lists it and no end-to-end test installs or exercises it. A product is either listed by a profile or has plannedFor, never both.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/profileName" }
+        },
         "minPeers": {
           "description": "Minimum versions of peer products that this release declares. Only checked for peers that are in the BOM.",
           "type": "object",

@@ -100,6 +100,29 @@
           "runner": "image-signature.sigstore.json"
         }
       }
+    },
+    "mcp-gw": {
+      "version": "0.5.0",
+      "source": "https://github.com/apelogic-ai/mcp-gw",
+      "commit": "2f2372a3f886f9a7acc3857665e632bd2704b90b",
+      "release": "https://github.com/apelogic-ai/mcp-gw/releases/tag/v0.5.0",
+      "chart": {
+        "reference": "oci://ghcr.io/apelogic-ai/charts/mcp-gateway",
+        "version": "0.5.0",
+        "digest": "sha256:05a97cb8616eb1320bfb8f63d044736f2d75b0541bc5f2d6ab112373953a3b35"
+      },
+      "images": {
+        "agentgateway": "ghcr.io/apelogic-ai/mcp-gw-agentgateway:0.5.0@sha256:c8e54c609306a93cc44882fa785f0455ae39bbc065bc33ec13379ac01f393794",
+        "github-wrapper": "ghcr.io/apelogic-ai/mcp-gw-github-wrapper:0.5.0@sha256:e6ba430acb4f308e657264dae99e0cc42444d2ae30341d8e23c2e5286f7ce032",
+        "google-workspace": "ghcr.io/apelogic-ai/mcp-gw-google-workspace:0.5.0@sha256:d9870600c3e8a14f5fa7b74bfcc9de1f8a58d6989c20413eb80cddda42ba78f6"
+      },
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "signerWorkflow": "apelogic-ai/mcp-gw/.github/workflows/release.yml",
+        "sourceRef": "refs/tags/v0.5.0",
+        "subjects": ["chart", "agentgateway", "github-wrapper", "google-workspace"]
+      },
+      "plannedFor": ["governed"]
     }
   },
   "dependencies": {

@@ -21,8 +21,10 @@ issue that tracks them.
 The **core** profile is Steward alone (API, admission webhook and
 controller), with cert-manager issuing its service certificates.
 The **governed** profile adds steward-run, github-oidc-exchange, mcp-gw and
-their external dependencies. Only core is in the BOM today; governed is tracked
-in [#3](https://github.com/apelogic-ai/steward-platform/issues/3).
+their external dependencies. The BOM implements core, task-auth and
+browser-admin today. Governed is tracked in
+[#3](https://github.com/apelogic-ai/steward-platform/issues/3); mcp-gw is
+already pinned for it (`plannedFor`), but nothing installs it yet.
 
 ## amd64 nodes
 
