@@ -3,20 +3,26 @@
 # Each download is checked against a pinned SHA-256. Linux amd64 only.
 #
 # Usage: scripts/ci/install-tools.sh TOOL...
-#        TOOL: cosign, crane, flux-schemas, helm, helmfile, kind, kubeconform, kubectl, yq
+#        TOOL: cosign, crane, flux-install, flux-schemas, helm, helmfile, kind,
+#              kubeconform, kubectl, yq
 #        flux-schemas is Flux's CRD JSON schemas for kubeconform, extracted into
 #        FLUX_SCHEMAS_DIR (also exported to later GitHub Actions steps).
+#        flux-install is Flux's install manifest, saved as FLUX_INSTALL_MANIFEST
+#        (also exported).
 # Env:   TOOLS_DIR (default: ${RUNNER_TEMP}/tools/bin)
 #        FLUX_SCHEMAS_DIR (default: TOOLS_DIR/../flux-crd-schemas)
+#        FLUX_INSTALL_MANIFEST (default: TOOLS_DIR/../flux-install.yaml)
 set -euo pipefail
 
 cosign_version=v3.1.3
 cosign_sha256=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 crane_version=v0.22.1
 crane_sha256=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
-# The Flux release whose CRD schemas validate examples/flux.
+# The Flux release whose CRD schemas validate examples/flux, and whose
+# controllers reconcile them in tests/flux/reconcile.sh.
 flux_version=v2.9.5
 flux_schemas_sha256=3c6c976df251e5a7e8c1c6a0ee63e6c28026d568b14ffa2f13cc32a6a564f238
+flux_install_sha256=cc3dcd743af16215838b6937e1fce83745bf24c0dcc6c59737c59df15429caaf
 helm_version=v3.22.0
 helm_sha256=1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb
 helmfile_version=v1.8.0
@@ -43,6 +49,7 @@ fi
 tools_dir="${TOOLS_DIR:-${RUNNER_TEMP:?RUNNER_TEMP or TOOLS_DIR is required}/tools/bin}"
 mkdir -p "${tools_dir}"
 flux_schemas_dir="${FLUX_SCHEMAS_DIR:-${tools_dir%/}/../flux-crd-schemas}"
+flux_install_manifest="${FLUX_INSTALL_MANIFEST:-${tools_dir%/}/../flux-install.yaml}"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
@@ -76,6 +83,15 @@ for tool in "$@"; do
         "${helmfile_sha256}" "${work}/helmfile.tar.gz"
       tar -xzf "${work}/helmfile.tar.gz" -C "${work}" helmfile
       install -m 0755 "${work}/helmfile" "${tools_dir}/helmfile"
+      ;;
+    flux-install)
+      fetch "https://github.com/fluxcd/flux2/releases/download/${flux_version}/install.yaml" \
+        "${flux_install_sha256}" "${work}/install.yaml"
+      mkdir -p "$(dirname "${flux_install_manifest}")"
+      install -m 0644 "${work}/install.yaml" "${flux_install_manifest}"
+      if [[ -n "${GITHUB_ENV:-}" ]]; then
+        echo "FLUX_INSTALL_MANIFEST=$(cd "$(dirname "${flux_install_manifest}")" && pwd)/$(basename "${flux_install_manifest}")" >> "${GITHUB_ENV}"
+      fi
       ;;
     flux-schemas)
       fetch "https://github.com/fluxcd/flux2/releases/download/${flux_version}/crd-schemas.tar.gz" \
