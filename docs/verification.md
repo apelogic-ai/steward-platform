@@ -2,13 +2,14 @@
 
 CI runs these checks on every pull request, on every push to `main`, and
 nightly. All of them run on GitHub-hosted `ubuntu-latest` (linux/amd64)
-runners, and you can run them locally.
+runners. All of them run locally too; the end-to-end test needs an amd64 host.
 
 | Check | Script | What it proves |
 |---|---|---|
 | Schema and cross-references | [`scripts/validate-bom.sh`](../scripts/validate-bom.sh) | The BOM matches [`schemas/bom/v1.schema.json`](../schemas/bom/v1.schema.json). Profiles reference only pinned entries, `requiredFor` matches the profiles, attestation subjects exist, declared minimum peer versions hold, and the tested Kubernetes versions cover both ends of the supported range. |
 | Digests | [`scripts/verify-digests.sh`](../scripts/verify-digests.sh) | Every chart, image, node image and manifest pinned in the BOM resolves anonymously at its digest. A product tag that moved away from the pinned digest fails. A dependency or node image tag that moved only warns, because those upstreams rebuild tags; the pinned digest is still what gets installed. |
 | Attestations | [`scripts/verify-attestations.sh`](../scripts/verify-attestations.sh) | Each artifact listed in `products.<name>.provenance.subjects` has a GitHub artifact attestation with the declared predicate type, signed by the declared workflow at the declared tag, built on a GitHub-hosted runner, from the product repository at the pinned commit. |
+| Core end-to-end | [`tests/e2e/core/run.sh`](../tests/e2e/core/run.sh) | The core profile installs from the BOM coordinates on every Kubernetes version in `kubernetes.tested`, runs the BOM image digests, applies its migrations, enforces admission, and serves TLS. Needs an amd64 Docker engine. See [`tests/e2e/core/README.md`](../tests/e2e/core/README.md). |
 
 The attestation check needs a GitHub token (`GH_TOKEN`), because `gh
 attestation verify` reads attestations through the GitHub API. The other checks
