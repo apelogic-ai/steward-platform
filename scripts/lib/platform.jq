@@ -5,7 +5,7 @@
 # Steward keys come from its v0.3.1 chart:
 # https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/values.yaml
 # and the github-oidc-exchange keys from its v0.7.1 chart:
-# https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.1/charts/github-oidc-exchange/values.yaml
+# https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/charts/github-oidc-exchange/values.yaml
 
 # --- Reserved fields ---------------------------------------------------------
 

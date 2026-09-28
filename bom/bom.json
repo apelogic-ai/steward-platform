@@ -49,17 +49,17 @@
       }
     },
     "github-oidc-exchange": {
-      "version": "0.7.1",
+      "version": "0.7.2",
       "source": "https://github.com/apelogic-ai/github-oidc-exchange",
-      "commit": "054893f55841595b952f26c60cdcc202e34392cc",
-      "release": "https://github.com/apelogic-ai/github-oidc-exchange/releases/tag/v0.7.1",
+      "commit": "003664f0a7ef3a91a92f35445bba0b8f22cb97ba",
+      "release": "https://github.com/apelogic-ai/github-oidc-exchange/releases/tag/v0.7.2",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/github-oidc-exchange",
-        "version": "0.7.1",
-        "digest": "sha256:5e9a105f530999212a9c9ff64d657f794a057de5f608430512092cb86c52803e"
+        "version": "0.7.2",
+        "digest": "sha256:65993732c2199b680439476722df16a8c21ed5905dbaf2b60588ccb1809a7344"
       },
       "images": {
-        "exchange": "ghcr.io/apelogic-ai/github-oidc-exchange:0.7.1@sha256:ab5636d7368e82d0040b0a981c330a6f2ab54447c38603008c735135aa3cda09"
+        "exchange": "ghcr.io/apelogic-ai/github-oidc-exchange:0.7.2@sha256:74a09abba6206260aa4e4666f7a6447b95a5aba1b088f6770b134b1b813ab838"
       },
       "signatures": {
         "certificateIdentity": "https://github.com/apelogic-ai/github-oidc-exchange/.github/workflows/release.yml@refs/heads/main",

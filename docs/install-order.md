@@ -157,8 +157,8 @@ and enrolling it late.
    above).
 2. **github-oidc-exchange, not yet enrolled.** Install it so that its issuer
    URL and public JWKS exist; later steps need both. Its
-   [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/installation.md)
-   and [consumer contract](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/consumer-contract-v1.md)
+   [installation guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/installation.md)
+   and [consumer contract](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/consumer-contract-v1.md)
    own the details.
 3. **steward-run**: runner controller, runner scale set and the pinned
    reusable workflow
@@ -173,7 +173,7 @@ and enrolling it late.
    user's Envelope. Record the user's canonical ID.
 6. **Enroll the exchange policy** with the observed claims and that canonical
    ID
-   ([integration](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.0/docs/integration.md)).
+   ([integration](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/integration.md)).
 7. **Accept in core mode**: one submission is authenticated and admitted
    against the Envelope without running anything; wrong audience, issuer,
    repository, ref or actor each fail closed.

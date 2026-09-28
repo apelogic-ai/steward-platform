@@ -30,7 +30,7 @@ GitHub-hosted job (runner)                  kind cluster
   exchange's issuer, the `steward-task-api` audience, the public Steward
   origin as the protected resource, the exchange's public JWKS in a
   ConfigMap, and federated subjects (policy v6).
-- **github-oidc-exchange** 0.7.1, policy v6, from its chart by digest. Its
+- **github-oidc-exchange** 0.7.2, policy v6, from its chart by digest. Its
   policy ConfigMap and keyring Secret are operator inputs; the test creates
   them.
 - **Edge**: the Gateway API 1.6.1 CRDs (standard channel) and Envoy
@@ -62,7 +62,7 @@ the exchange fetches GitHub's public JWKS over the internet.
   then gives a specific, documented answer for an authenticated subject that
   is not yet associated with a user: `403 task_identity_unassociated`
   ([Steward task submission API, v0.3.1](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/task-submission-api.md#production-identity-boundary);
-  [exchange consumer contracts, v0.7.1](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.1/docs/consumer-contract-v1.md)).
+  [exchange consumer contracts, v0.7.2](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/consumer-contract-v1.md)).
 - **The policy admits only this repository's workflow, as far as v6 can
   express it**: the numeric owner and repository IDs, and the exact subject,
   event and ref observed from the job's own signed token. v6 has no selector

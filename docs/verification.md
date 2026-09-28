@@ -56,7 +56,7 @@ Not attested upstream, so CI does not verify them:
 Steward images and the chart carry only provenance attestations; there are no
 SBOM attestations on the registry artifacts.
 
-## Signature coverage: github-oidc-exchange 0.7.1 and steward-run 0.7.1
+## Signature coverage: github-oidc-exchange 0.7.2 and steward-run 0.7.2
 
 Neither product publishes GitHub artifact attestations for these releases
 (`gh attestation verify` finds none). Both attach cosign Sigstore bundles to
