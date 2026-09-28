@@ -53,7 +53,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 
 ## Choices, and why
 
-- **Policy v6 and `steward-task-v3`.** Steward 0.3.1's release handoff names
+- **Policy v6 and `steward-task-v3`.** Steward 0.3.2's release handoff names
   v5 as its identity-policy contract, and v5 is the exchange's default. But a
   v5 policy must map the actor to a Steward canonical user, and Steward
   answers a v2 token for an unknown canonical user with a plain `401`, which
@@ -61,7 +61,7 @@ the exchange fetches GitHub's public JWKS over the internet.
   by a Google browser login. With v6, Steward verifies the token first and
   then gives a specific, documented answer for an authenticated subject that
   is not yet associated with a user: `403 task_identity_unassociated`
-  ([Steward task submission API, v0.3.1](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/task-submission-api.md#production-identity-boundary);
+  ([Steward task submission API, v0.3.2](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/task-submission-api.md#production-identity-boundary);
   [exchange consumer contracts, v0.7.2](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/consumer-contract-v1.md)).
 - **The policy admits only this repository's workflow, as far as v6 can
   express it**: the numeric owner and repository IDs, and the exact subject,
@@ -79,7 +79,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 - **Steward's edge route comes from this repository.** Steward's own
   `web.httpRoute` requires its browser web UI, which requires Google browser
   login. `charts/steward-edge` routes only the task API paths from
-  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.1/charts/steward/README.md),
+  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.2/charts/steward/README.md),
   and the edge namespace is admitted through `apiserverIngressNamespaces`.
 - **The action runs by path.** GitHub cannot take a `uses:` reference from an
   expression, so the job checks out `apelogic-ai/steward-run` at the BOM

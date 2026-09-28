@@ -21,27 +21,27 @@
   },
   "products": {
     "steward": {
-      "version": "0.3.1",
+      "version": "0.3.2",
       "source": "https://github.com/apelogic-ai/steward",
-      "commit": "7307162a67026068f6d8aa2f9f2a838525808247",
-      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.1",
+      "commit": "ba222fd449138e84fb2900924b39ec4c156a9201",
+      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.2",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/steward",
-        "version": "0.3.1",
-        "digest": "sha256:c0e6d740dfee1545604eb68dc665e0ebaf197a3d9a442e5672c20ae563e8a4a1"
+        "version": "0.3.2",
+        "digest": "sha256:20099bb3a6af6cd85f74e9604d4976f69db017a3b62cef8f176dc370c380397b"
       },
       "images": {
-        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.1-apiserver@sha256:078764cdbba6a39390290e19c619cf401e2dceb1559b9647201228abb6e63359",
-        "controller": "ghcr.io/apelogic-ai/steward:0.3.1-controller@sha256:2f58cf3daecb878aa9b73e07aa9656c242935a57f7741f3270b610f43878802c",
-        "mint": "ghcr.io/apelogic-ai/steward:0.3.1-mint@sha256:bb43ca11e59ee3fa88e99f501fbf0a80acbf31d897c8fcf9e925193b3c99e467",
-        "bridge": "ghcr.io/apelogic-ai/steward:0.3.1-bridge@sha256:855304820becc8e0185202adc30dbca3b69cbdaf6c24af8f93bedd1f4ee1546f",
-        "web": "ghcr.io/apelogic-ai/steward:0.3.1-web@sha256:17cbb396bb7b096cd88df7ce458e1992d81b7a7818222044acbc2ab3aee64fe3",
-        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.1@sha256:21a9502e6e396bfb52f219fc744319976eef5632ce63e517c9c2c9269d2177ef"
+        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.2-apiserver@sha256:0d766a15843cd48b8e48651ed8818d20fad6e85843ec27e1a14e3dfecd1536f0",
+        "controller": "ghcr.io/apelogic-ai/steward:0.3.2-controller@sha256:4736875548da64f278bcb978a271ad1579703d33b3638b5bd24d8664f2ff9df4",
+        "mint": "ghcr.io/apelogic-ai/steward:0.3.2-mint@sha256:b7fe8cfd188051a58828ee4d64143202cec6cd7da99f5921693f7f280afcc986",
+        "bridge": "ghcr.io/apelogic-ai/steward:0.3.2-bridge@sha256:29a3c747df64a048ee74fda80001fcc83b3f1986a6ff1ae74ac6e8d7de6c6632",
+        "web": "ghcr.io/apelogic-ai/steward:0.3.2-web@sha256:63d26595fffb861dcfe85daa52144d41478fad81103125484146632a3b43c7ff",
+        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.2@sha256:912cfabc009c783b74a3290280f09d958e0805b74a1fad5c17e290745919bb19"
       },
       "provenance": {
         "predicateType": "https://slsa.dev/provenance/v1",
         "signerWorkflow": "apelogic-ai/steward/.github/workflows/release.yml",
-        "sourceRef": "refs/tags/v0.3.1",
+        "sourceRef": "refs/tags/v0.3.2",
         "subjects": ["chart", "apiserver", "controller", "mint", "bridge", "web", "codex-reference-runtime"]
       },
       "minPeers": {

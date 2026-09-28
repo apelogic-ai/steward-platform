@@ -11,9 +11,9 @@ and an administrator from the [first-admin runbook](first-admin.md). One
 Workspace account can play both roles; a second account in the same
 Workspace, as the requesting user, shows the separation more clearly. Steward
 owns the model; its
-[User Envelope and RBAC administration](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/operator-envelope-administration.md)
-and [administrator browser contract](https://github.com/apelogic-ai/steward/blob/v0.3.1/docs/admin-ui-contract-v1.md)
-at v0.3.1 are the authority for what each step means.
+[User Envelope and RBAC administration](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/operator-envelope-administration.md)
+and [administrator browser contract](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/admin-ui-contract-v1.md)
+at v0.3.2 are the authority for what each step means.
 
 ## 1. Give the user a member role
 
@@ -93,7 +93,7 @@ and grants it nothing. On a browser-admin install an administrator can
 associate that subject with a canonical user, and the same submission then
 gets past identity to Steward's core-mode answer:
 `503`, "Task submission is disabled during the staged orchestration rollout"
-([`submit`, v0.3.1](https://github.com/apelogic-ai/steward/blob/v0.3.1/crates/steward-apiserver/src/tasks.rs#L1924-L1967)).
+([`submit`, v0.3.2](https://github.com/apelogic-ai/steward/blob/v0.3.2/crates/steward-apiserver/src/tasks.rs#L1924-L1967)).
 That proves the whole authorization chain by hand: GitHub OIDC, the exchange,
 Steward's token verification, the association, and the canonical user.
 
@@ -109,7 +109,7 @@ hostname, or a self-hosted runner next to the cluster):
    [task-auth test](../../tests/e2e/task-auth/run.sh)) against the install.
    Expect `403 task_identity_unassociated` naming the issuer and subject.
 2. As an administrator, list the observations and note the subject's `id`
-   and `revision`: `GET /admin/api/v1/federated-subjects`. Steward 0.3.1 has
+   and `revision`: `GET /admin/api/v1/federated-subjects`. Steward 0.3.2 has
    no page for this yet, so call the browser API with your session. Browser
    mutations need the session cookie, the exact origin, same-origin fetch
    metadata and the session's CSRF value:

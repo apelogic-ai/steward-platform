@@ -24,10 +24,10 @@ need no credentials. The signature check needs
 checksum in [`scripts/ci/install-tools.sh`](../scripts/ci/install-tools.sh))
 and network access to the public Sigstore trust root.
 
-## Attestation coverage: Steward 0.3.1
+## Attestation coverage: Steward 0.3.2
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.1:
+from `.github/workflows/release.yml` at the release tag. For 0.3.2:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -45,7 +45,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.1.tgz` (install the attested
+- the chart archive release asset `steward-0.3.2.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);

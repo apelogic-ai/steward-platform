@@ -377,6 +377,8 @@ reject "a personal Google account domain" \
   '.browserAuth.google.workspaceDomain = "gmail.com"' "does not match" kind-browser-admin
 reject "an organization ID outside Steward's rule" \
   '.browserAuth.google.organizationId = "example"' "does not match" kind-browser-admin
+reject "an organization ID with nothing after org_" \
+  '.browserAuth.google.organizationId = "org_"' "does not match" kind-browser-admin
 reject "unrestricted browser-auth egress in production" \
   '.purpose = "production" | .database.source = "operator" | .tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}} | .edge.gateway.source = "operator"' \
   "does not match" kind-browser-admin
