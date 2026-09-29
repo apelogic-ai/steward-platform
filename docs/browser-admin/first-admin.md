@@ -35,7 +35,7 @@ authorization keys.
 runs inside the apiserver Pod, where the database URL is already projected:
 
 ```sh
-kubectl -n steward exec deploy/steward-apiserver -- \
+kubectl --context <context> -n steward exec deploy/steward-apiserver -- \
   /usr/local/bin/steward bootstrap-rbac \
   --user-id usr_<32 hex> \
   --grant administrator \

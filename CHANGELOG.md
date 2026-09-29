@@ -32,6 +32,24 @@ is authoritative for every pinned version and digest.
   `verify-digests.sh --mirror` checks them against the lock. See
   [docs/fork-and-build.md](docs/fork-and-build.md). Without the block the
   generated output is byte-identical to before.
+- **Safety fix: the Envoy Gateway CRD hook no longer writes to a different
+  cluster from the releases.** The helmfile's `envoy-gateway` presync hook
+  (`scripts/apply-manifests.sh`) ignored helmfile's `--kube-context` and, unless
+  `PLATFORM_KUBE_CONTEXT` was set, server-side applied the Gateway API and
+  Envoy Gateway CRDs to whatever context was current, so
+  `helmfile --kube-context A sync` with current context B wrote CRDs to
+  cluster B. The hook now receives the release's kube context from helmfile
+  (`--kube-context`, `HELMFILE_KUBE_CONTEXT`, or a release or environment
+  `kubeContext`) and names it on every `kubectl` call. With no context at all
+  it uses the current context, where Helm installs the releases too, and
+  prints a notice. It refuses only where the CRDs and the releases could land
+  on different clusters: `PLATFORM_KUBE_CONTEXT` naming a different context,
+  a context missing from the kubeconfig, or helmfile's `--kubeconfig` (which
+  helmfile does not pass to hooks; use `KUBECONFIG`). No breaking change for
+  the documented invocations, with or without `--kube-context` or
+  `PLATFORM_KUBE_CONTEXT`. `--kube-context` is the recommended form; see
+  [the CRD hook and the kube context](helmfile/README.md#the-crd-hook-and-the-kube-context).
+  New test: [`tests/hooks/run.sh`](tests/hooks/run.sh).
 
 ## 2026.10.0-alpha.5
 

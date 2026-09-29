@@ -184,5 +184,6 @@ names are in the platform values), then:
 
 ```sh
 scripts/generate.sh environments/kind-task-auth/platform-values.yaml
-helmfile --file helmfile/helmfile.yaml.gotmpl --environment kind-task-auth sync
+helmfile --file helmfile/helmfile.yaml.gotmpl --environment kind-task-auth \
+  --kube-context <context> sync
 ```

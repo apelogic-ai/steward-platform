@@ -12,7 +12,7 @@ values. Charts from the BOM are installed by digest.
 | `evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca): self-signed CA `Issuer` | evaluation only |
 | `postgresql-evaluation` | [`charts/postgresql-evaluation`](../charts/postgresql-evaluation): the BOM PostgreSQL image, no persistence or TLS | evaluation only |
 | `steward` | BOM `products.steward.chart`, by digest. In browser-admin it also renders its own `HTTPRoute`s and `BackendTLSPolicy`, so it is installed after `envoy-gateway` | all |
-| `envoy-gateway` | BOM `dependencies.envoy-gateway.chart`, by digest, without its bundled CRDs. A presync hook first runs [`scripts/apply-manifests.sh`](../scripts/apply-manifests.sh): the BOM's Gateway API (standard channel) and Envoy Gateway CRD manifests, checked by digest and server-side applied against `PLATFORM_KUBE_CONTEXT` or the current context | task-auth and browser-admin, when `edge.install` is true |
+| `envoy-gateway` | BOM `dependencies.envoy-gateway.chart`, by digest, without its bundled CRDs. A presync hook first runs [`scripts/apply-manifests.sh`](../scripts/apply-manifests.sh): the BOM's Gateway API (standard channel) and Envoy Gateway CRD manifests, checked by digest and server-side applied to the release's kube context ([which one](#the-crd-hook-and-the-kube-context)) | task-auth and browser-admin, when `edge.install` is true |
 | `edge-evaluation-ca` | [`charts/evaluation-ca`](../charts/evaluation-ca) in the Gateway namespace: the edge listener CA | task-auth and browser-admin, evaluation only |
 | `evaluation-edge` | [`charts/evaluation-edge`](../charts/evaluation-edge): evaluation `GatewayClass`, `Gateway` and the public Steward CA `ConfigMap` | task-auth and browser-admin, evaluation only |
 | `steward-edge` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API `HTTPRoute` and `BackendTLSPolicy` | task-auth (browser-admin uses Steward's own routes) |
@@ -110,6 +110,45 @@ export PLATFORM_NETRC_FILE=...   # only if the manifests mirror needs credential
 The workloads pull with the Secrets named in `registry.imagePullSecrets`,
 which you create in each namespace first. See
 [registry mirroring](../docs/registry-mirroring.md).
+
+## The CRD hook and the kube context
+
+The `envoy-gateway` presync hook writes CRDs to the cluster, so it applies to
+exactly the kube context that helmfile uses for the releases, names that
+context on every `kubectl` call, and refuses to run when the two could
+differ. Pass `--kube-context <context>` (or set `HELMFILE_KUBE_CONTEXT`) to be
+explicit; that is the recommended form. The hook resolves its context in this
+order:
+
+1. helmfile's context for the release, which helmfile hands to the hook:
+   `--kube-context`, else `HELMFILE_KUBE_CONTEXT`, else a `kubeContext` on the
+   release or on the helmfile environment. (A `kubeContext` under
+   `helmDefaults` is not visible to hooks; use one of the others.)
+2. `PLATFORM_KUBE_CONTEXT`, the earlier way to point the hook at a cluster,
+   still works: with a context from step 1 the two must be equal; without
+   one it must equal the current kubeconfig context, where Helm then installs
+   the releases.
+3. Neither: Helm installs the releases into the current kubeconfig context,
+   so the hook reads that context once, prints
+   `notice: no kube context given; using current context <name> for both CRDs and releases`,
+   and applies to it by name.
+
+It also refuses when the context is not in the kubeconfig, and when helmfile
+was run with `--kubeconfig`, which helmfile does not pass to hooks. Select a
+kubeconfig file with the `KUBECONFIG` environment variable instead: Helm and
+the hook both read it.
+
+**Troubleshooting.** `PLATFORM_KUBE_CONTEXT is ...` means it names a
+different cluster from the releases: unset it or make it equal. `helmfile was
+run with --kubeconfig`: run `KUBECONFIG=<file> helmfile ...` instead. `is not
+in the kubeconfig`: check the context name and `KUBECONFIG`. The `no kube
+context given` notice is not an error; add `--kube-context` to make the target
+explicit. Before this fix, the hook applied the CRDs to the current kubeconfig
+context whenever `PLATFORM_KUBE_CONTEXT` was unset, even with
+`--kube-context`; if you ran the task-auth or
+browser-admin sync with a current context other than the target, check that
+cluster for Gateway API and Envoy Gateway CRDs you did not intend
+(`kubectl --context <that context> get crds | grep -E 'gateway.networking.k8s.io|gateway.envoyproxy.io'`).
 
 ## Upgrades and the Steward CRD
 

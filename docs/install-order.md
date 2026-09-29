@@ -126,6 +126,10 @@ with the steward-run action. It stops before Envelope admission: that needs
 a Steward canonical user, which only a browser login creates (step 5 of the
 governed sequence below).
 
+The helmfile applies the Gateway API and Envoy Gateway CRDs from a hook, to
+the kube context of its releases: run it with `--kube-context <context>`
+([details and troubleshooting](../helmfile/README.md#the-crd-hook-and-the-kube-context)).
+
 ## 7. Browser administration (browser-admin profile)
 
 The [browser-admin profile](profiles/browser-admin.md) is step 6 plus
