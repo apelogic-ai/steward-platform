@@ -22,14 +22,18 @@
 #
 # A new platform version is tagged only when it is released, after its release
 # pull request merges. Until the tag of the BOM platformVersion is published,
-# steward-edge is built from STEWARD_EDGE_REF instead: a Git reference of this
-# repository that holds the chart under test (in GitHub Actions, GITHUB_REF).
+# steward-edge is built from STEWARD_EDGE_BRANCH instead: a branch of this
+# repository that holds the chart under test. In GitHub Actions that is the
+# pull request's head branch, or the pushed branch. (Flux cannot fetch a pull
+# request's refs/pull/N/merge commit, so a pull request from a fork, whose
+# branch is not in this repository, cannot run this until the tag exists.)
 #
 # Usage: tests/flux/reconcile.sh
 # Env:
 #   FLUX_INSTALL_MANIFEST  Flux's install.yaml (scripts/ci/install-tools.sh flux-install)
-#   STEWARD_EDGE_REF       the reference to build steward-edge from while the
-#                          platform tag is unpublished (default: GITHUB_REF)
+#   STEWARD_EDGE_BRANCH    the branch to build steward-edge from while the
+#                          platform tag is unpublished (default: GITHUB_HEAD_REF,
+#                          else GITHUB_REF_NAME for a branch)
 #   K8S_VERSION            a version from kubernetes.tested (default: the highest)
 #   KEEP_CLUSTER           set to 1 to keep the cluster for debugging
 # Needs: docker, kind, kubectl, jq, yq (mikefarah v4), curl, git.
@@ -93,14 +97,18 @@ platform_tag="$(yq -r 'select(.kind == "GitRepository") | .spec.ref.tag' "${work
 platform_url="$(yq -r 'select(.kind == "GitRepository") | .spec.url' "${work}/steward-edge.yaml")"
 edge_source="this repository's platform tag ${platform_tag}"
 if ! git ls-remote --exit-code --tags "${platform_url}" "refs/tags/${platform_tag}" >/dev/null 2>&1; then
-  edge_ref="${STEWARD_EDGE_REF:-${GITHUB_REF:-}}"
-  if [[ -z "${edge_ref}" ]]; then
-    echo "tag ${platform_tag} is not published yet; set STEWARD_EDGE_REF to a reference of ${platform_url} that holds this chart" >&2
+  edge_branch="${STEWARD_EDGE_BRANCH:-${GITHUB_HEAD_REF:-}}"
+  if [[ -z "${edge_branch}" && "${GITHUB_REF:-}" == refs/heads/* ]]; then
+    edge_branch="${GITHUB_REF_NAME:-}"
+  fi
+  if [[ -z "${edge_branch}" ]] \
+    || ! git ls-remote --exit-code --heads "${platform_url}" "refs/heads/${edge_branch}" >/dev/null 2>&1; then
+    echo "tag ${platform_tag} is not published yet; set STEWARD_EDGE_BRANCH to a branch of ${platform_url} that holds this chart" >&2
     exit 2
   fi
-  echo "note: tag ${platform_tag} is not published yet; building steward-edge from ${edge_ref} until this platform version is released"
-  EDGE_REF="${edge_ref}" yq -i '(select(.kind == "GitRepository") | .spec.ref) = {"name": strenv(EDGE_REF)}' "${work}/steward-edge.yaml"
-  edge_source="${edge_ref} (tag ${platform_tag} not published yet)"
+  echo "note: tag ${platform_tag} is not published yet; building steward-edge from branch ${edge_branch} until this platform version is released"
+  EDGE_BRANCH="${edge_branch}" yq -i '(select(.kind == "GitRepository") | .spec.ref) = {"branch": strenv(EDGE_BRANCH)}' "${work}/steward-edge.yaml"
+  edge_source="branch ${edge_branch} (tag ${platform_tag} not published yet)"
 fi
 k apply --server-side -f "${work}/gateway-api-crds.yaml" -f "${work}/envoy-gateway-crds.yaml" \
   -f "${work}/envoy-gateway.yaml" -f "${work}/steward-edge.yaml"
