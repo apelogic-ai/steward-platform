@@ -41,6 +41,12 @@ does ([verification](verification.md)). The Kubernetes version must satisfy
 every installed chart at once; the BOM's `kubernetes` range is that
 intersection.
 
+To install from a private registry mirror, copy the BOM's artifacts into it
+first, digests intact, and check the copy
+([registry mirroring](registry-mirroring.md)). The `registry` block of the
+platform values (step 3) then points every chart, image and CRD source at the
+mirror, and the order below is unchanged.
+
 ## 3. Write the platform values and generate
 
 Describe the environment once in a [platform values](platform-values.md)

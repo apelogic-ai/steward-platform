@@ -491,6 +491,45 @@
           "type": "object"
         }
       }
+    },
+    "registry": {
+      "description": "Registry mirror override, for installs that pull every artifact from the operator's own mirror (docs/registry-mirroring.md). Each artifact class that is set is pulled from its mirror; a class that is not set is pulled from upstream, as the BOM names it. An override rewrites only the registry or host and the leading path of a reference. Tags, and the digests the install pins, stay exactly the BOM's; scripts/mirror-list.sh lists the pairs to copy. Credentials are referenced by name, never given as values.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "productImages": {
+          "description": "Images of the platform products (products.<name>.images): Steward and github-oidc-exchange, and steward-run and mcp-gw in the mirror list. Steward's chart takes one repository for all its images, which the rewrite keeps.",
+          "$ref": "#/$defs/ociMirror"
+        },
+        "productCharts": {
+          "description": "Helm charts of the platform products (products.<name>.chart).",
+          "$ref": "#/$defs/ociChartMirror"
+        },
+        "dependencyImages": {
+          "description": "Images of the external dependencies (dependencies.<name>.images): cert-manager, Envoy Gateway and the evaluation PostgreSQL.",
+          "$ref": "#/$defs/ociMirror"
+        },
+        "dependencyCharts": {
+          "description": "Helm charts of the external dependencies (dependencies.<name>.chart): cert-manager and Envoy Gateway. Envoy Gateway's CRDs, which the Flux output takes from its chart artifact (fluxSource.chart), come from this mirror too.",
+          "$ref": "#/$defs/ociChartMirror"
+        },
+        "gitSources": {
+          "description": "Git repositories the Flux output reads: the Gateway API CRDs (the fluxSource.git of their BOM manifest) and charts/steward-edge from this repository at the platform tag. The GitRepository still pins the BOM commit, or the platform tag.",
+          "$ref": "#/$defs/gitMirror"
+        },
+        "manifests": {
+          "description": "HTTPS downloads of the CRD manifests the helmfile server-side applies (dependencies.<name>.manifests[].url). scripts/apply-manifests.sh still checks each download against its BOM SHA-256.",
+          "$ref": "#/$defs/urlMirror"
+        },
+        "imagePullSecrets": {
+          "description": "kubernetes.io/dockerconfigjson Secrets that the workloads of the BOM charts pull with: Steward, cert-manager, github-oidc-exchange and Envoy Gateway (its controller and its Envoy proxies). The operator creates each one in every namespace those charts install into; the generator only references them.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/dnsSubdomain" }
+        }
+      }
     }
   },
   "allOf": [
@@ -618,6 +657,108 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
+      }
+    },
+    "ociPrefix": {
+      "description": "An OCI registry and optional leading path, without a scheme or trailing slash, for example registry.example.test/steward-platform. The registry is a host with a dot, or localhost, and an optional port.",
+      "type": "string",
+      "pattern": "^(localhost|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+)(:[0-9]{1,5})?(/[a-z0-9]+([._-]+[a-z0-9]+)*)*$"
+    },
+    "urlPrefix": {
+      "description": "An HTTPS URL without a trailing slash, for example https://git.example.test/mirrors.",
+      "type": "string",
+      "pattern": "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~%+-]+)*$"
+    },
+    "keepSourceHost": {
+      "description": "false (the default): the prefix replaces the upstream registry or host, so ghcr.io/apelogic-ai/steward becomes <prefix>/apelogic-ai/steward. true: the upstream host is kept as the first path segment under the prefix, <prefix>/ghcr.io/apelogic-ai/steward, which never collides across upstreams.",
+      "type": "boolean"
+    },
+    "secretName": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": { "name": { "$ref": "#/$defs/dnsSubdomain" } }
+    },
+    "ociMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prefix"],
+      "properties": {
+        "prefix": { "$ref": "#/$defs/ociPrefix" },
+        "keepSourceHost": { "$ref": "#/$defs/keepSourceHost" }
+      }
+    },
+    "ociChartMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prefix"],
+      "properties": {
+        "prefix": { "$ref": "#/$defs/ociPrefix" },
+        "keepSourceHost": { "$ref": "#/$defs/keepSourceHost" },
+        "flux": {
+          "description": "How the Flux OCIRepository objects of this class authenticate to the mirror (https://fluxcd.io/flux/components/source/ocirepositories/). The helmfile uses Helm's registry credentials instead (docs/registry-mirroring.md).",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "secretRef": {
+              "description": "A kubernetes.io/dockerconfigjson Secret in flux-system, for spec.secretRef.",
+              "$ref": "#/$defs/secretName"
+            },
+            "provider": {
+              "description": "spec.provider: the cloud identity the source controller authenticates with (aws, azure, gcp), or generic.",
+              "enum": ["generic", "aws", "azure", "gcp"]
+            },
+            "certSecretRef": {
+              "description": "A Secret in flux-system holding the CA (ca.crt) that verifies a mirror with a private certificate authority, for spec.certSecretRef.",
+              "$ref": "#/$defs/secretName"
+            }
+          },
+          "allOf": [
+            {
+              "description": "A cloud provider authenticates by workload identity; a Secret would be ignored.",
+              "if": { "required": ["provider"], "properties": { "provider": { "enum": ["aws", "azure", "gcp"] } } },
+              "then": { "not": { "required": ["secretRef"] } }
+            }
+          ]
+        }
+      }
+    },
+    "gitMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["prefix"] }, { "required": ["repositories"] }],
+      "properties": {
+        "prefix": { "$ref": "#/$defs/urlPrefix" },
+        "keepSourceHost": { "$ref": "#/$defs/keepSourceHost" },
+        "repositories": {
+          "description": "Exact mirror URL per upstream repository URL, for mirrors whose names do not follow a prefix. It takes precedence over prefix.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^https://[^\\s]+[^/\\s]$" },
+          "additionalProperties": { "pattern": "^https://[^\\s]+[^/\\s]$", "type": "string" }
+        },
+        "flux": {
+          "description": "How the Flux GitRepository objects authenticate to the mirror (https://fluxcd.io/flux/components/source/gitrepositories/).",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "secretRef": {
+              "description": "A Secret in flux-system with the Git credentials (username and password, or bearerToken), for spec.secretRef.",
+              "$ref": "#/$defs/secretName"
+            }
+          }
+        }
+      }
+    },
+    "urlMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prefix"],
+      "properties": {
+        "prefix": { "$ref": "#/$defs/urlPrefix" },
+        "keepSourceHost": { "$ref": "#/$defs/keepSourceHost" }
       }
     }
   }

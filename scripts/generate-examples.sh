@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
-# Regenerate the committed Flux examples, examples/flux/<profile>, each from
-# its production-shaped platform values and the BOM. With --check, change
-# nothing and fail if the committed files differ from a fresh generation.
+# Regenerate the committed Flux examples, examples/flux/<name>, each from its
+# production-shaped platform values and the BOM. With --check, change nothing
+# and fail if the committed files differ from a fresh generation.
 #
-#   examples/flux/core           environments/production
-#   examples/flux/task-auth      environments/production-task-auth
-#   examples/flux/browser-admin  environments/production-browser-admin
+#   examples/flux/core           environments/production                (core)
+#   examples/flux/task-auth      environments/production-task-auth      (task-auth)
+#   examples/flux/browser-admin  environments/production-browser-admin  (browser-admin)
+#   examples/flux/mirrored       environments/production-mirrored       (task-auth, from a registry mirror)
 #
 # Usage: scripts/generate-examples.sh [--check]
 # Needs: what scripts/generate.sh needs.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# name <space> environment <space> profile
 examples=(
-  "core production"
-  "task-auth production-task-auth"
-  "browser-admin production-browser-admin"
+  "core production core"
+  "task-auth production-task-auth task-auth"
+  "browser-admin production-browser-admin browser-admin"
+  "mirrored production-mirrored task-auth"
 )
 check=0
 case "${1:-}" in
@@ -28,13 +31,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 stale=0
 for entry in "${examples[@]}"; do
-  read -r name environment <<<"${entry}"
+  read -r name environment profile <<<"${entry}"
   source_values="${repo_root}/environments/${environment}/platform-values.yaml"
   example="${repo_root}/examples/flux/${name}"
   "${repo_root}/scripts/generate.sh" --out "${work}/${name}" "${source_values}" >/dev/null
   [[ -d "${work}/${name}/flux" ]] || { echo "the generator emitted no Flux output for ${source_values}" >&2; exit 1; }
-  if [[ "$(yq -r .profile "${source_values}")" != "${name}" ]]; then
-    echo "${source_values} is not the ${name} profile" >&2
+  if [[ "$(yq -r .profile "${source_values}")" != "${profile}" ]]; then
+    echo "${source_values} is not the ${profile} profile" >&2
     exit 1
   fi
 
