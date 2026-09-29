@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/bom/v1.schema.json",
-  "platformVersion": "2026.10.0-alpha.5",
+  "platformVersion": "2026.10.0-alpha.6",
   "kubernetes": {
     "minVersion": "1.32",
     "maxVersion": "1.34",
