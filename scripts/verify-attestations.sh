@@ -7,11 +7,21 @@
 # the same way. Artifacts a product does not attest are reported, not failed;
 # artifacts signed with cosign bundles are verified by verify-signatures.sh.
 #
-# Usage: scripts/verify-attestations.sh [path/to/bom.json]
+# With --built-lock LOCK (products built from source, docs/fork-and-build.md),
+# the products the lock lists are skipped, each with a notice: the upstream
+# attestations name the upstream digests, not your build.
+#
+# Usage: scripts/verify-attestations.sh [--built-lock LOCK] [path/to/bom.json]
 # Needs: gh (authenticated, for example GH_TOKEN), jq.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+built_lock=""
+if [[ "${1:-}" == --built-lock ]]; then
+  [[ "$#" -ge 2 ]] || { echo "usage: $0 [--built-lock LOCK] [path/to/bom.json]" >&2; exit 2; }
+  built_lock="$2"
+  shift 2
+fi
 bom="${1:-${repo_root}/bom/bom.json}"
 
 for tool in gh jq; do
@@ -46,11 +56,18 @@ failures=0
 verified=0
 unattested=()
 signed=()
+built=()
+built_products=""
+[[ -z "${built_lock}" ]] || built_products="$(jq -r '.products | keys[]' "${built_lock}")"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
 while IFS=$'\t' read -r product subject uri owner identity predicate source commit attested; do
   label="products.${product}.${subject}"
+  if [[ -n "${built_products}" ]] && grep -qxF "${product}" <<<"${built_products}"; then
+    built+=("${label}")
+    continue
+  fi
   if [[ "${attested}" == cosign ]]; then
     signed+=("${label}")
     continue
@@ -82,6 +99,9 @@ while IFS=$'\t' read -r product subject uri owner identity predicate source comm
   echo "ok   ${label}: ${identity}, commit ${commit}"
 done <<<"${entries}"
 
+for label in ${built[@]+"${built[@]}"}; do
+  echo "SKIP ${label}: built from source (${built_lock}); its upstream attestation names the upstream digest, not this build, so it is not verified. Check the lock with scripts/verify-built-lock.sh and verify your own build provenance."
+done
 if [[ "${#signed[@]}" != 0 ]]; then
   printf 'info signed with cosign bundles instead, see scripts/verify-signatures.sh: %s\n' "${signed[@]}"
 fi
@@ -92,8 +112,8 @@ if [[ "${failures}" != 0 ]]; then
   echo "${failures} attestation checks failed" >&2
   exit 1
 fi
-if [[ "${verified}" == 0 ]]; then
+if [[ "${verified}" == 0 && "${#built[@]}" == 0 ]]; then
   echo "no attested artifacts found in ${bom}" >&2
   exit 1
 fi
-echo "verified ${verified} attestations"
+echo "verified ${verified} attestations$([[ "${#built[@]}" == 0 ]] || echo "; skipped ${#built[@]} built-from-source artifacts, whose upstream attestations do not apply")"

@@ -263,6 +263,26 @@
         }
       ]
     },
+    "artifacts": {
+      "description": "Where the product charts and images come from. Optional: without it, or with source bom, every product artifact is the BOM's upstream reference and the output is unchanged. source built takes each deployed product's chart and images from a built-artifacts lock instead: the products as the operator built them from source at the BOM's release commits and pushed them to their own registry, with their own digests (docs/fork-and-build.md). The generator checks the lock against the BOM and fails, listing each one, when a chart or image of a product the profile deploys is missing. Versions, values and profiles stay the BOM's, and so do the external dependencies and steward-run's projected release coordinates.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "description": "bom (the default): the BOM's upstream artifacts. built: the artifacts listed in builtLock.",
+          "enum": ["bom", "built"]
+        },
+        "builtLock": {
+          "description": "Path to the built-artifacts lock, a JSON file matching schemas/built-lock/v1.schema.json: absolute, or relative to this file. Required with source built, and only allowed with it.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "if": { "properties": { "source": { "const": "built" } } },
+      "then": { "required": ["builtLock"] },
+      "else": { "not": { "required": ["builtLock"] } }
+    },
     "networkPolicy": {
       "description": "Cross-component NetworkPolicy inputs. Charts keep their NetworkPolicies on; these values open only what the platform needs.",
       "type": "object",
@@ -597,6 +617,15 @@
           "networkPolicy": { "properties": { "egressCidrs": { "properties": {
             "browserAuth": { "not": { "contains": { "enum": ["0.0.0.0/0", "::/0"] } } }
           } } } }
+        }
+      }
+    },
+    {
+      "description": "With artifacts.source built, the built-artifacts lock names the final location of every product chart and image. A registry mirror rewrite of the product classes (registry.productImages, registry.productCharts) would move them a second time, so it is refused; registry settings for the other classes compose with built artifacts.",
+      "if": { "required": ["artifacts"], "properties": { "artifacts": { "properties": { "source": { "const": "built" } } } } },
+      "then": {
+        "properties": {
+          "registry": { "not": { "anyOf": [{ "required": ["productImages"] }, { "required": ["productCharts"] }] } }
         }
       }
     }

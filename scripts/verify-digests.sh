@@ -5,7 +5,7 @@
 # dependencies and node images, whose upstreams may rebuild a tag. The pinned
 # digest is what gets installed either way.
 #
-# Usage: scripts/verify-digests.sh [path/to/bom.json]
+# Usage: scripts/verify-digests.sh [--built-lock LOCK] [path/to/bom.json]
 #        scripts/verify-digests.sh --mirror PLATFORM_VALUES [--profile NAME] [--installed] [path/to/bom.json]
 # The images of every tested version of a dependency are checked too (the
 # default version's once).
@@ -22,17 +22,31 @@
 # repository must carry the tag at the BOM commit. Classes the values do not
 # mirror are skipped; the default mode checks them upstream.
 #
+# With --built-lock LOCK (products built from source, docs/fork-and-build.md),
+# the products the lock lists are checked against the lock instead, by
+# scripts/verify-built-lock.sh with your own registry credentials; their
+# upstream BOM artifacts are not checked. Everything else is checked as above.
+# With --mirror, platform values in built mode (artifacts.source built) do the
+# same with their artifacts.builtLock: the built products are checked against
+# the lock and left out of the mirror list (they are never copied from
+# upstream), and the mirrored classes of everything else, for example the
+# dependency images, are checked in the mirror. --built-lock and --mirror are
+# not combined; --mirror reads the lock from the platform values.
+#
 # Needs: crane, jq, curl, git, sha256sum (or shasum); with --mirror, also what
-# scripts/mirror-list.sh needs.
+# scripts/mirror-list.sh needs; with a built-artifacts lock, also
+# check-jsonschema.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bom="${repo_root}/bom/bom.json"
 mirror_values=""
+built_lock=""
 list_options=()
-usage() { echo "usage: $0 [--mirror PLATFORM_VALUES [--profile NAME] [--installed]] [path/to/bom.json]" >&2; exit 2; }
+usage() { echo "usage: $0 [--built-lock LOCK | --mirror PLATFORM_VALUES [--profile NAME] [--installed]] [path/to/bom.json]" >&2; exit 2; }
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
+    --built-lock) [[ "$#" -ge 2 ]] || usage; built_lock="$2"; shift 2 ;;
     --mirror) [[ "$#" -ge 2 ]] || usage; mirror_values="$2"; shift 2 ;;
     --profile) [[ "$#" -ge 2 ]] || usage; list_options+=(--profile "$2"); shift 2 ;;
     --installed) list_options+=(--installed); shift ;;
@@ -42,6 +56,7 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 [[ "${#list_options[@]}" == 0 || -n "${mirror_values}" ]] || usage
+[[ -z "${built_lock}" || -z "${mirror_values}" ]] || usage
 
 for tool in crane jq curl git; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
@@ -59,6 +74,29 @@ tag_commit() {
   awk -v tag="refs/tags/$2" '$2 == tag "^{}" { peeled = $1 } $2 == tag { plain = $1 }
     END { print (peeled != "" ? peeled : plain) }' <<<"${refs}"
 }
+
+work="$(mktemp -d)"
+trap 'rm -rf "${work}"' EXIT
+
+# Platform values in built mode name their lock, relative to the values file
+# unless absolute (as scripts/generate.sh reads it).
+if [[ -n "${mirror_values}" ]]; then
+  command -v yq >/dev/null || { echo "missing yq" >&2; exit 2; }
+  if [[ "$(yq -r '.artifacts.source // "bom"' "${mirror_values}")" == built ]]; then
+    built_lock="$(yq -r '.artifacts.builtLock' "${mirror_values}")"
+    [[ "${built_lock}" == /* ]] || built_lock="$(dirname "${mirror_values}")/${built_lock}"
+  fi
+fi
+
+# Built products: check them against the lock, with the caller's registry
+# credentials (before the anonymous Docker config of the default mode).
+built_failed=0
+built_note=""
+if [[ -n "${built_lock}" ]]; then
+  "${repo_root}/scripts/verify-built-lock.sh" --bom "${bom}" "${built_lock}" || built_failed=1
+  built_note="; the built products resolve at their lock digests"
+  echo "info products in ${built_lock} were checked against it, not against their upstream BOM artifacts"
+fi
 
 if [[ -n "${mirror_values}" ]]; then
   list="$("${repo_root}/scripts/mirror-list.sh" --bom "${bom}" ${list_options[@]+"${list_options[@]}"} "${mirror_values}")"
@@ -150,16 +188,27 @@ if [[ -n "${mirror_values}" ]]; then
     echo "${failures} of ${checked} mirrored artifacts failed" >&2
     exit 1
   fi
+  if [[ "${built_failed}" != 0 ]]; then
+    echo "the built-artifacts lock ${built_lock} failed its checks" >&2
+    exit 1
+  fi
   suffix=""
   [[ "${skipped}" != 0 ]] && suffix=" (${skipped} not mirrored, skipped)"
-  echo "all ${checked} mirrored artifacts resolve in the mirror at their BOM digests${suffix}"
+  echo "all ${checked} mirrored artifacts resolve in the mirror at their BOM digests${suffix}${built_note}"
   exit 0
 fi
 
+# Leave the built products out of the BOM checked anonymously below.
+if [[ -n "${built_lock}" ]]; then
+  jq --slurpfile lock "${built_lock}" '.products |= with_entries(select(.key as $name | $lock[0].products | has($name) | not))' \
+    "${bom}" > "${work}/bom.json"
+  bom="${work}/bom.json"
+fi
+
 # Anonymous access only: an empty Docker config hides any local credentials.
-DOCKER_CONFIG="$(mktemp -d)"
+DOCKER_CONFIG="${work}/docker"
+mkdir "${DOCKER_CONFIG}"
 export DOCKER_CONFIG
-trap 'rm -rf "${DOCKER_CONFIG}"' EXIT
 
 # One line per artifact: kind <TAB> label <TAB> name:tag <TAB> digest
 # (for manifests: url in place of name:tag; for Git sources: repository and
@@ -253,4 +302,8 @@ if [[ "${failures}" != 0 ]]; then
   echo "${failures} of ${checked} artifacts failed" >&2
   exit 1
 fi
-echo "all ${checked} artifacts resolve anonymously at their pinned digests"
+if [[ "${built_failed}" != 0 ]]; then
+  echo "the built-artifacts lock ${built_lock} failed its checks" >&2
+  exit 1
+fi
+echo "all ${checked} artifacts resolve anonymously at their pinned digests${built_note}"

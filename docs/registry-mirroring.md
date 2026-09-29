@@ -229,6 +229,16 @@ For every mirrored artifact, it checks that:
 It authenticates with your own credentials, unlike the default mode, which
 checks upstream anonymously. Classes that are not mirrored are skipped.
 
+## Products built from source
+
+With products built from source (`artifacts.source: built`,
+[fork and build from source](fork-and-build.md#built-products-and-a-registry-mirror)),
+the built-artifacts lock names where the products are, so the schema refuses
+`registry.productImages` and `registry.productCharts`. The other classes and
+`imagePullSecrets` still apply. `scripts/mirror-list.sh` then leaves the
+built products out of the list, and `verify-digests.sh --mirror` checks them
+against the lock instead.
+
 ## Steward's registry lock
 
 Steward's `steward-registry-lock.sh` plans and copies Steward's own release
