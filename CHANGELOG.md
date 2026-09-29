@@ -4,6 +4,21 @@ Platform versions of the Steward platform BOM. Each entry is one
 `platformVersion` of [`bom/bom.json`](bom/bom.json); the BOM at that version
 is authoritative for every pinned version and digest.
 
+## Unreleased
+
+- Source-built products (no breaking changes). The optional platform values
+  block `artifacts` (`source: built`, `builtLock`) takes each deployed
+  product's chart and images from a built-artifacts lock
+  ([`schemas/built-lock/v1.schema.json`](schemas/built-lock/v1.schema.json)):
+  products built from source at the BOM's release commits, or from a fork
+  with `allowSourceDrift`, and pushed to the operator's registry. The
+  generator checks the lock against the BOM and lists every missing chart or
+  image. `scripts/built-lock-from-digests.sh` writes a lock and
+  `scripts/verify-built-lock.sh` checks one; `verify-digests.sh`,
+  `verify-attestations.sh` and `verify-signatures.sh` take `--built-lock`.
+  See [docs/fork-and-build.md](docs/fork-and-build.md). Without the block the
+  generated output is byte-identical to before.
+
 ## 2026.10.0-alpha.5
 
 First tagged pre-release. Release notes:

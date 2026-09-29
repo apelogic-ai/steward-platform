@@ -47,6 +47,12 @@ writes `generated/<environment>/`:
 The same inputs always give the same bytes. `generated/` is not committed;
 regenerate it after changing the values file or the BOM.
 
+With `artifacts.source: built`, the product charts and images come from a
+built-artifacts lock (`artifacts.builtLock`) instead of the BOM: products you
+built from source and pushed to your own registry. Everything else is
+generated exactly as from the BOM alone, and each generated file gets one more
+header line naming the lock. See [fork and build from source](fork-and-build.md).
+
 Tools: `jq` 1.7 or later, [yq](https://github.com/mikefarah/yq) v4 and
 `check-jsonschema`. CI uses the versions pinned in
 [`scripts/ci/install-tools.sh`](../scripts/ci/install-tools.sh) and
@@ -81,6 +87,7 @@ combination.
 | `database.cidrs`, `.port` | Steward `networkPolicy.postgresCidrs`, `networkPolicy.ports.postgres` | |
 | `database.tls` | Steward `databaseTls` | `verify-full` also needs the URL to carry `sslmode=verify-full&sslrootcert=/run/database-tls/ca.crt`. |
 | `networkPolicy.apiserverIngressNamespaces` | Steward `networkPolicy.apiserverIngressNamespaces` | Namespaces allowed to call the Steward API. |
+| `artifacts.source`, `.builtLock` | where every product chart and image reference comes from | Optional. `bom` (the default): the BOM's upstream artifacts. `built`: the lock at `builtLock` (absolute, or relative to the values file), checked against the BOM; see [fork and build from source](fork-and-build.md). The external dependencies always come from the BOM. |
 
 The generator also sets Steward's `images` from the BOM and keeps
 `execution.enabled=false` and `networkPolicy.enabled=true`. Steward keys are

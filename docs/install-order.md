@@ -41,6 +41,11 @@ does ([verification](verification.md)). The Kubernetes version must satisfy
 every installed chart at once; the BOM's `kubernetes` range is that
 intersection.
 
+Building the products from source instead, at the BOM's release commits or
+from a fork, and pushing them to your own registry? Your digests differ from
+the BOM's; record them in a built-artifacts lock and generate in built mode:
+see [fork and build from source](fork-and-build.md).
+
 ## 3. Write the platform values and generate
 
 Describe the environment once in a [platform values](platform-values.md)
