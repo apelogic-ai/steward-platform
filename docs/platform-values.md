@@ -42,7 +42,7 @@ writes `generated/<environment>/`:
 | `values/steward-edge.yaml` | [`charts/steward-edge`](../charts/steward-edge): Steward's task API routes and BackendTLSPolicy (task-auth only; browser-admin uses Steward's own routes) |
 | `values/envoy-gateway.yaml` | Envoy Gateway, without its bundled CRDs (task-auth and browser-admin, when `edge.install` is true). The helmfile applies the BOM's CRD manifests first. |
 | `values/edge-evaluation-ca.yaml`, `values/evaluation-edge.yaml` | [`charts/evaluation-ca`](../charts/evaluation-ca) again, for the edge, and [`charts/evaluation-edge`](../charts/evaluation-edge): the evaluation Gateway (task-auth and browser-admin, when `edge.gateway.source` is `evaluation`) |
-| `flux/` | Flux objects for the same install, when no evaluation piece is used: an `OCIRepository` pinned by digest and a `HelmRelease` per release, with the helmfile's order as `dependsOn`; for task-auth and browser-admin with `edge.install`, the Gateway API and Envoy Gateway CRDs as `Kustomization`s over their BOM `fluxSource`; for task-auth, `charts/steward-edge` from this repository at the platform version's tag. [`examples/flux/core`](../examples/flux/core/README.md), [`task-auth`](../examples/flux/task-auth/README.md) and [`browser-admin`](../examples/flux/browser-admin/README.md) are this output for the production examples. |
+| `flux/` | Flux objects for the same install, when no evaluation piece is used: an `OCIRepository` pinned by digest and a `HelmRelease` per release, with the helmfile's order as `dependsOn`; for task-auth and browser-admin with `edge.install`, the Gateway API and Envoy Gateway CRDs as `Kustomization`s over their BOM `fluxSource`; for task-auth, `charts/steward-edge` from this repository at the platform version's tag. [`examples/flux/core`](../examples/flux/core/README.md), [`task-auth`](../examples/flux/task-auth/README.md) and [`browser-admin`](../examples/flux/browser-admin/README.md) are this output for the production examples, and [`mirrored`](../examples/flux/mirrored/README.md) for [`environments/production-mirrored`](../environments/production-mirrored/platform-values.yaml), task-auth from a registry mirror. |
 
 The same inputs always give the same bytes. `generated/` is not committed;
 regenerate it after changing the values file or the BOM.
@@ -171,6 +171,34 @@ The generator also sets, for browser-admin:
 - `networkPolicy.ingressNamespace` set to `networkPolicy.edgeNamespace`: with
   the web UI on, the chart admits the edge to both the web UI and the
   apiserver, so the edge is not added to `apiserverIngressNamespaces`.
+
+### Registry mirror (every profile)
+
+Optional. Without `registry` every reference is the BOM's, unchanged. With it,
+each artifact class that is set is pulled from its mirror; only the registry or
+host and the leading path change, never a tag, digest or Git commit.
+[Registry mirroring](registry-mirroring.md) explains the rewrite, the copy and
+the check.
+With `artifacts.source: built`, `registry.productImages` and
+`registry.productCharts` are refused, since the lock already names where the
+products are; the other classes and `registry.imagePullSecrets` apply as usual
+([fork and build from source](fork-and-build.md#built-products-and-a-registry-mirror)).
+
+| Field | Sets | Notes |
+|---|---|---|
+| `registry.productImages` | Steward `images.repository`; github-oidc-exchange `image.repository` | `prefix`, and `keepSourceHost` to keep the upstream registry as a path segment. Steward's chart takes one repository for all its images. |
+| `registry.productCharts` | the Steward and github-oidc-exchange chart references of the helmfile and of the Flux `OCIRepository`s | `flux.secretRef`, `flux.provider` (`aws`, `azure`, `gcp`) or `flux.certSecretRef` for those `OCIRepository`s. |
+| `registry.dependencyImages` | cert-manager `image.repository` and each component's; Envoy Gateway `global.images.envoyGateway.image` and `global.images.envoyProxy.image`; evaluation PostgreSQL `image.repository` | |
+| `registry.dependencyCharts` | the cert-manager and Envoy Gateway chart references, including the Envoy Gateway chart the Flux CRD `Kustomization` extracts | `flux` as for product charts. |
+| `registry.gitSources` | the Flux `GitRepository` URLs: the Gateway API CRDs and `charts/steward-edge` | `prefix`, or `repositories` for exact URLs; `flux.secretRef`. The BOM commit and the platform tag stay. |
+| `registry.manifests` | the URLs the helmfile's CRD hook downloads (`apply-manifests.sh --url`) | Still checked against the BOM SHA-256. |
+| `registry.imagePullSecrets` | Steward `imagePullSecrets`; cert-manager `global.imagePullSecrets`; github-oidc-exchange `image.pullSecrets`; Envoy Gateway `global.imagePullSecrets` | Names of Secrets you create in each chart's namespace. |
+
+With a chart mirror, the generated helmfile inputs also carry
+`registryLogins`: helmfile logs in to each chart class's registry with
+`STEWARD_PLATFORM_PRODUCT_CHARTS_USERNAME` and `_PASSWORD`, or
+`STEWARD_PLATFORM_DEPENDENCY_CHARTS_USERNAME` and `_PASSWORD`, when both are
+set.
 
 ### Reserved for governed mode
 

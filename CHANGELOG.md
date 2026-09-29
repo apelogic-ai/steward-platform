@@ -6,6 +6,15 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+- Registry mirror override (no breaking changes). The optional platform
+  values block `registry` pulls each artifact class from the operator's own
+  mirror: product images and charts, dependency images and charts, the Git
+  sources and CRD manifests of the Flux output and the helmfile, with image
+  pull Secrets and Flux credentials referenced by name. Tags and digests stay
+  the BOM's. `scripts/mirror-list.sh` lists the whole platform to copy and
+  `scripts/verify-digests.sh --mirror` checks the copy with the operator's
+  credentials. See [docs/registry-mirroring.md](docs/registry-mirroring.md).
+  Without the block the generated output is byte-identical to before.
 - Source-built products (no breaking changes). The optional platform values
   block `artifacts` (`source: built`, `builtLock`) takes each deployed
   product's chart and images from a built-artifacts lock
@@ -16,7 +25,12 @@ is authoritative for every pinned version and digest.
   image. `scripts/built-lock-from-digests.sh` writes a lock and
   `scripts/verify-built-lock.sh` checks one; `verify-digests.sh`,
   `verify-attestations.sh` and `verify-signatures.sh` take `--built-lock`.
-  See [docs/fork-and-build.md](docs/fork-and-build.md). Without the block the
+  Built mode composes with a registry mirror of everything but the products:
+  `registry.productImages` and `registry.productCharts` are refused with
+  `source: built`, while the dependency classes and `imagePullSecrets` apply;
+  `mirror-list.sh` then leaves the built products out, and
+  `verify-digests.sh --mirror` checks them against the lock. See
+  [docs/fork-and-build.md](docs/fork-and-build.md). Without the block the
   generated output is byte-identical to before.
 
 ## 2026.10.0-alpha.5

@@ -77,6 +77,12 @@ digest, with every chart's values generated from one
 - **Flux**: [examples/flux](examples/flux/core/README.md) ([task-auth](examples/flux/task-auth/README.md), [browser-admin](examples/flux/browser-admin/README.md)), the same
   install as `OCIRepository` and `HelmRelease` objects, generated from the BOM.
 
+Installing from a private registry mirror? Set the `registry` block of the
+platform values, copy the artifacts with `scripts/mirror-list.sh` and check
+the mirror with `scripts/verify-digests.sh --mirror`; the digests stay the
+BOM's. See [registry mirroring](docs/registry-mirroring.md) and the
+[mirrored Flux example](examples/flux/mirrored/README.md).
+
 Upgrading products installed before this repository existed? Follow the
 [migration runbook](docs/upgrades/from-pre-platform.md) to move them to the
 current BOM.
@@ -84,7 +90,8 @@ current BOM.
 Building the products from source, at the BOM's release commits or from a
 fork, into your own registry? See [fork and build from source](docs/fork-and-build.md):
 the generator takes your digests from a built-artifacts lock and checks it
-against the BOM.
+against the BOM. The external dependencies can still come from a registry
+mirror.
 
 ## What this repository owns, and what it does not
 
@@ -138,6 +145,8 @@ already runs it can keep their own.
 
 CI validates the BOM, checks that every digest resolves anonymously, and
 verifies the product attestations and signatures. See [docs/verification.md](docs/verification.md).
+To check your own mirror of the BOM, see
+[registry mirroring](docs/registry-mirroring.md#check-the-mirror).
 
 ## Status
 

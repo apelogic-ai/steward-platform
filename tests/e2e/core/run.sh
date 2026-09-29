@@ -18,15 +18,27 @@
 #   - the admission webhook denies an invalid AgentRuntime;
 #   - the API answers over verified TLS (401 on an admin route).
 #
+# With MIRROR=1 it installs the same from a registry mirror: it runs a local
+# registry (registry:2, pinned by digest), sets the platform values' registry
+# block to it, copies what that install pulls into it with
+# scripts/mirror-list.sh --installed, checks the copy with
+# scripts/verify-digests.sh --mirror, and configures the kind nodes to pull
+# from it. Every chart then comes from the mirror, and every assertion above
+# about BOM digests also requires the mirror host: the charts helmfile
+# installs and pulls, the rendered images and the images the pods run.
+#
 # Usage: tests/e2e/core/run.sh
 # Env:
 #   BOM           path to the BOM (default: bom/bom.json)
 #   K8S_VERSION   a version from kubernetes.tested (default: the highest)
 #   POSTGRES_VERSION  a version from dependencies.postgresql.tested, major
 #                 ("17") or exact (default: the BOM default version)
+#   MIRROR        set to 1 to install from a local registry mirror
+#   MIRROR_PORT   the mirror's port on 127.0.0.1 (default: 5001)
 #   KEEP_CLUSTER  set to 1 to keep the cluster and work directory for debugging
 # Needs: docker (linux/amd64 engine), kind, helm, helmfile, kubectl, jq, yq
-# (mikefarah v4), check-jsonschema, openssl, curl, tar.
+# (mikefarah v4), check-jsonschema, openssl, curl, tar; with MIRROR=1, crane
+# and git.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -36,12 +48,23 @@ environment_dir="${repo_root}/environments/kind"
 platform_values="${environment_dir}/platform-values.yaml"
 helmfile_file="${repo_root}/helmfile/helmfile.yaml.gotmpl"
 
+mirror="${MIRROR:-0}"
+# The local mirror: the Distribution registry, pinned by the digest of its
+# multi-platform index. Plain HTTP on localhost, which crane and Helm use
+# without extra flags; the kind nodes reach it on the kind network.
+mirror_image="docker.io/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+mirror_host="localhost:${MIRROR_PORT:-5001}"
+mirror_prefix="${mirror_host}/steward-platform"
+
 stage=preflight
 cluster_created=0
+mirror_started=0
 port_forward_pid=""
 run_dir=""
 
-for tool in docker kind helm helmfile kubectl jq yq check-jsonschema openssl curl tar; do
+tools=(docker kind helm helmfile kubectl jq yq check-jsonschema openssl curl tar)
+[[ "${mirror}" == 1 ]] && tools+=(crane git)
+for tool in "${tools[@]}"; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
 done
 
@@ -118,6 +141,7 @@ ip_in_any() {
 
 run_id="core-$(date -u +%Y%m%d%H%M%S)-$$"
 cluster="spf-${run_id}"
+mirror_container="spf-mirror-${run_id}"
 context="kind-${cluster}"
 temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 run_dir="$(mktemp -d "${temp_root%/}/spf-${run_id}.XXXXXX")"
@@ -140,6 +164,10 @@ diagnostics() {
   done
   echo "--- logs: cert-manager" >&2
   "${K[@]}" -n "${cert_manager_namespace}" logs deployment/cert-manager --tail=40 >&2 2>/dev/null
+  if [[ "${mirror_started}" == 1 ]]; then
+    echo "--- logs: registry mirror" >&2
+    docker logs --tail 40 "${mirror_container}" >&2 2>/dev/null
+  fi
 }
 
 cleanup() {
@@ -162,6 +190,9 @@ cleanup() {
   if [[ "${cluster_created}" == 1 ]]; then
     kind delete cluster --name "${cluster}" >/dev/null 2>&1 || status=1
   fi
+  if [[ "${mirror_started}" == 1 ]]; then
+    docker rm --force "${mirror_container}" >/dev/null 2>&1 || status=1
+  fi
   rm -rf "${run_dir}" || status=1
   exit "${status}"
 }
@@ -176,33 +207,89 @@ if [[ "${docker_arch}" != x86_64 && "${docker_arch}" != amd64 ]]; then
   exit 2
 fi
 
-echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, environment ${environment}"
+echo "platform ${platform_version}: Steward chart ${chart_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, environment ${environment}$([[ "${mirror}" == 1 ]] && echo ", from the registry mirror ${mirror_prefix}")"
 echo "owned cluster ${cluster}, work directory ${run_dir}"
 
 # --- Generate and check the reference install inputs ------------------------
 
 stage=generate
 install_values="${platform_values}"
-if [[ -n "${postgres_wanted}" ]]; then
+if [[ -n "${postgres_wanted}" || "${mirror}" == 1 ]]; then
   install_values="${run_dir}/platform-values.yaml"
-  yq ".database.evaluationVersion = \"${postgres_wanted}\"" "${platform_values}" > "${install_values}"
+  cp "${platform_values}" "${install_values}"
 fi
+if [[ -n "${postgres_wanted}" ]]; then
+  yq -i ".database.evaluationVersion = \"${postgres_wanted}\"" "${install_values}"
+fi
+if [[ "${mirror}" == 1 ]]; then
+  # Products drop their upstream registry, dependencies keep it as a path
+  # segment (docs/registry-mirroring.md).
+  yq -i ".registry = {
+      \"productImages\": {\"prefix\": \"${mirror_prefix}\"},
+      \"productCharts\": {\"prefix\": \"${mirror_prefix}\"},
+      \"dependencyImages\": {\"prefix\": \"${mirror_prefix}\", \"keepSourceHost\": true},
+      \"dependencyCharts\": {\"prefix\": \"${mirror_prefix}\", \"keepSourceHost\": true}
+    }" "${install_values}"
+fi
+
+# Every chart and image of the core profile, and where this install pulls it
+# from: the BOM reference, or its mirror.
+"${repo_root}/scripts/mirror-list.sh" --bom "${bom}" --profile core "${install_values}" > "${run_dir}/artifacts.json"
+# A BOM reference (repository:tag@digest, or a chart's oci://repository@digest)
+# as this install pulls it.
+as_installed() {
+  jq -er --arg ref "$1" '[.artifacts[] | select(.type == "oci")
+    | if ($ref | startswith("oci://")) then select("oci://" + .sourceRef == $ref) | "oci://" + .targetRef
+      else select(.source + "@" + .digest == $ref) | .target + "@" + .digest end][0] // error("not in the core profile")' \
+    "${run_dir}/artifacts.json"
+}
+chart_installed="$(as_installed "${chart_reference}@${chart_digest}")"
+cert_manager_chart="$(as_installed "${cert_manager_chart}")"
+for index in "${!steward_images[@]}"; do steward_images[index]="$(as_installed "${steward_images[index]}")"; done
+for index in "${!cert_manager_images[@]}"; do cert_manager_images[index]="$(as_installed "${cert_manager_images[index]}")"; done
+postgres_ref="$(as_installed "${postgres_ref}")"
+
+if [[ "${mirror}" == 1 ]]; then
+  stage=mirror
+  docker run --detach --name "${mirror_container}" --publish "127.0.0.1:${mirror_host#*:}:5000" \
+    "${mirror_image}" >/dev/null
+  mirror_started=1
+  for _ in {1..30}; do
+    curl --silent --fail --output /dev/null "http://${mirror_host}/v2/" && break
+    sleep 1
+  done
+  curl --silent --show-error --fail --output /dev/null "http://${mirror_host}/v2/"
+  # Copy what this install pulls, each by digest; the digest cannot change.
+  "${repo_root}/scripts/mirror-list.sh" --bom "${bom}" --installed --mirrored "${install_values}" \
+    > "${run_dir}/mirror-list.json"
+  while IFS=$'\t' read -r source_ref target; do
+    crane copy "${source_ref}" "${target}" >/dev/null 2>"${run_dir}/crane.log" || {
+      cat "${run_dir}/crane.log" >&2
+      echo "could not copy ${source_ref} to ${target}" >&2
+      exit 1
+    }
+    echo "copied ${source_ref} to ${target}"
+  done < <(jq -r '.artifacts[] | select(.type == "oci") | [.sourceRef, .target] | @tsv' "${run_dir}/mirror-list.json")
+  "${repo_root}/scripts/verify-digests.sh" --mirror "${install_values}" --installed "${bom}"
+  echo "pass: the mirror holds every artifact this install pulls, at its BOM digest"
+fi
+
 "${repo_root}/scripts/generate.sh" --bom "${bom}" --out "${generated}/${environment}" "${install_values}"
 "${HF[@]}" build > "${run_dir}/helmfile-build.yaml"
-for pinned in "${chart_reference}@${chart_digest}" "${cert_manager_chart}"; do
+for pinned in "${chart_installed}" "${cert_manager_chart}"; do
   release="${pinned%@*}"
   release="${release##*/}"
   actual="$(yq -r "select(.releases) | .releases[] | select(.name == \"${release}\") | .chart" "${run_dir}/helmfile-build.yaml")"
   if [[ "${actual}" != "${pinned}" ]]; then
-    echo "helmfile installs ${release} from '${actual}', BOM pins ${pinned}" >&2
+    echo "helmfile installs ${release} from '${actual}', expected ${pinned}" >&2
     exit 1
   fi
 done
-echo "pass: helmfile installs Steward and cert-manager at their BOM chart digests"
+echo "pass: helmfile installs Steward and cert-manager at their BOM chart digests$([[ "${mirror}" == 1 ]] && echo ", from the mirror")"
 
 # The Steward chart at the BOM digest is the BOM version.
 stage=chart
-helm pull "${chart_reference}@${chart_digest}" --destination "${run_dir}" >/dev/null
+helm pull "${chart_installed}" --destination "${run_dir}" >/dev/null
 chart_archive="$(find "${run_dir}" -maxdepth 1 -type f -name 'steward*.tgz' -print -quit)"
 test -s "${chart_archive}"
 tar -xOf "${chart_archive}" steward/Chart.yaml > "${run_dir}/Chart.yaml"
@@ -224,10 +311,27 @@ echo "pass: rendered Steward chart uses the BOM image digests"
 # --- Cluster ----------------------------------------------------------------
 
 stage=cluster
+kind_config="${environment_dir}/kind-config.yaml"
+if [[ "${mirror}" == 1 ]]; then
+  # containerd reads per-registry hosts.toml files, written below.
+  kind_config="${run_dir}/kind-config.yaml"
+  yq '.containerdConfigPatches = ["[plugins.\"io.containerd.grpc.v1.cri\".registry]\n  config_path = \"/etc/containerd/certs.d\""]' \
+    "${environment_dir}/kind-config.yaml" > "${kind_config}"
+fi
 cluster_created=1
 kind create cluster --name "${cluster}" --kubeconfig "${kubeconfig}" \
-  --config "${environment_dir}/kind-config.yaml" --image "${node_image}" --wait 180s
+  --config "${kind_config}" --image "${node_image}" --wait 180s
 chmod 600 "${kubeconfig}"
+if [[ "${mirror}" == 1 ]]; then
+  # The nodes pull ${mirror_host} images from the registry container, over the
+  # kind network.
+  docker network connect kind "${mirror_container}"
+  for node in $(kind get nodes --name "${cluster}"); do
+    docker exec "${node}" mkdir -p "/etc/containerd/certs.d/${mirror_host}"
+    printf '[host."http://%s:5000"]\n  capabilities = ["pull", "resolve"]\n' "${mirror_container}" \
+      | docker exec -i "${node}" tee "/etc/containerd/certs.d/${mirror_host}/hosts.toml" >/dev/null
+  done
+fi
 server_version="$("${K[@]}" version -o json | jq -r .serverVersion.gitVersion)"
 if [[ "${server_version}" != "v${k8s_version}" ]]; then
   echo "cluster runs ${server_version}, expected v${k8s_version}" >&2
@@ -273,12 +377,17 @@ assert_running() {
       echo "no running container in ${namespace} (${selector}) uses BOM image ${ref}; running: ${ids}" >&2
       exit 1
     }
+    # From the mirror: the image the container runs was pulled from it.
+    if [[ "${mirror}" == 1 ]] && ! grep -q "^${mirror_prefix}/.*@$(image_digest "${ref}")\$" <<<"${ids}"; then
+      echo "no running container in ${namespace} (${selector}) runs ${ref} from the mirror; running: ${ids}" >&2
+      exit 1
+    fi
   done
 }
 assert_running "${namespace}" app.kubernetes.io/name=steward "${steward_images[@]}"
 assert_running "${cert_manager_namespace}" app.kubernetes.io/instance=cert-manager "${cert_manager_images[@]}"
 assert_running "${namespace}" app.kubernetes.io/name=postgresql-evaluation "${postgres_ref}"
-echo "pass: running Steward, cert-manager and PostgreSQL pods use the BOM image digests"
+echo "pass: running Steward, cert-manager and PostgreSQL pods use the BOM image digests$([[ "${mirror}" == 1 ]] && echo ", pulled from the mirror ${mirror_host}")"
 
 stage=assert-network
 postgres_ip="$("${KN[@]}" get pod -l app.kubernetes.io/name=postgresql-evaluation -o jsonpath='{.items[0].status.podIP}')"
@@ -403,4 +512,4 @@ fi
 echo "pass: API answered 401 on an admin route over TLS verified against the evaluation CA"
 
 stage=complete
-echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, reference install (${environment})"
+echo "core e2e passed: platform ${platform_version}, Kubernetes ${k8s_version}, PostgreSQL ${postgres_version}, reference install (${environment})$([[ "${mirror}" == 1 ]] && echo ", from the registry mirror")"

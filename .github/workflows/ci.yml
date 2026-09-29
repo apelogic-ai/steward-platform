@@ -48,6 +48,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The platform release tags, for the backward compatibility checks.
+          fetch-depth: 0
       - name: Install check-jsonschema
         run: pipx install check-jsonschema==0.38.2
       - name: Install tools
@@ -165,7 +167,9 @@ jobs:
       # the database version and the Kubernetes version are independent axes
       # (Steward reaches PostgreSQL over TCP; admission, cert-manager and
       # NetworkPolicy do not depend on the database version). The default
-      # entries install the kind environment unchanged (no override).
+      # entries install the kind environment unchanged (no override). One more
+      # entry, on the highest Kubernetes version, installs the same from a
+      # local registry mirror (tests/e2e/core/run.sh, MIRROR=1).
       - name: Read tested Kubernetes and PostgreSQL versions from the BOM
         id: versions
         run: |
@@ -174,12 +178,13 @@ jobs:
             (.kubernetes.tested | map(.version)) as $k8s
             | ($k8s | max_by(split(".") | map(tonumber))) as $highest
             | .dependencies.postgresql as $pg
-            | [$k8s[] | {k8s: ., postgres: $pg.version, override: ""}]
-              + [$pg.tested[].version | select(. != $pg.version) | {k8s: $highest, postgres: ., override: .}]
+            | [$k8s[] | {k8s: ., postgres: $pg.version, override: "", mirror: false}]
+              + [$pg.tested[].version | select(. != $pg.version) | {k8s: $highest, postgres: ., override: ., mirror: false}]
+              + [{k8s: $highest, postgres: $pg.version, override: "", mirror: true}]
           ' bom/bom.json)" >> "${GITHUB_OUTPUT}"
 
   e2e-core:
-    name: core e2e (Kubernetes ${{ matrix.k8s }}, PostgreSQL ${{ matrix.postgres }})
+    name: core e2e (Kubernetes ${{ matrix.k8s }}, PostgreSQL ${{ matrix.postgres }}${{ matrix.mirror && ', registry mirror' || '' }})
     needs: [validate, e2e-plan]
     # Steward images are linux/amd64 only; ubuntu-latest is amd64.
     runs-on: ubuntu-latest
@@ -195,11 +200,12 @@ jobs:
       - name: Install check-jsonschema
         run: pipx install check-jsonschema==0.38.2
       - name: Install tools
-        run: scripts/ci/install-tools.sh kind helm helmfile kubectl yq
+        run: scripts/ci/install-tools.sh kind helm helmfile kubectl yq crane
       - name: Run core e2e through the reference install
         env:
           K8S_VERSION: ${{ matrix.k8s }}
           POSTGRES_VERSION: ${{ matrix.override }}
+          MIRROR: ${{ matrix.mirror && '1' || '0' }}
         run: tests/e2e/core/run.sh
 
   e2e-browser-admin:

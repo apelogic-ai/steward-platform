@@ -31,10 +31,30 @@ environments:
   production-browser-admin:
     values:
       - {{ $root }}/production-browser-admin/helmfile.yaml
+  production-mirrored:
+    values:
+      - {{ $root }}/production-mirrored/helmfile.yaml
 ---
 {{- $generated := printf "%s/%s/values" (env "PLATFORM_GENERATED_DIR" | default "../generated") .Environment.Name }}
 {{- $releases := .Values.releases }}
 {{- $ns := .Values.namespaces }}
+
+{{- with .Values | get "registryLogins" list }}
+
+# A registry mirror for the charts (registry.productCharts and
+# registry.dependencyCharts in the platform values). helmfile runs
+# `helm registry login` for each host with <NAME>_USERNAME and <NAME>_PASSWORD
+# from the environment, for example STEWARD_PLATFORM_PRODUCT_CHARTS_USERNAME,
+# when both are set; otherwise Helm's own registry credentials apply
+# (helm registry login, HELM_REGISTRY_CONFIG or the Docker config). See
+# docs/registry-mirroring.md.
+repositories:
+{{- range . }}
+  - name: {{ .name }}
+    url: {{ .host }}
+    oci: true
+{{- end }}
+{{- end }}
 
 helmDefaults:
   wait: true
@@ -122,6 +142,12 @@ releases:
         args:
           - --context
           - "{{ env "PLATFORM_KUBE_CONTEXT" }}"
+          {{- /* With a manifests mirror (registry.manifests), each download
+                 comes from it; the digest is still the BOM's. */}}
+          {{- range $dependency, $url := $releases.envoyGateway | get "manifestUrls" dict }}
+          - --url
+          - {{ printf "%s=%s" $dependency $url | quote }}
+          {{- end }}
           - gateway-api-crds
           - envoy-gateway
     values:

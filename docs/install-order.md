@@ -41,10 +41,18 @@ does ([verification](verification.md)). The Kubernetes version must satisfy
 every installed chart at once; the BOM's `kubernetes` range is that
 intersection.
 
+To install from a private registry mirror, copy the BOM's artifacts into it
+first, digests intact, and check the copy
+([registry mirroring](registry-mirroring.md)). The `registry` block of the
+platform values (step 3) then points every chart, image and CRD source at the
+mirror, and the order below is unchanged.
+
 Building the products from source instead, at the BOM's release commits or
 from a fork, and pushing them to your own registry? Your digests differ from
 the BOM's; record them in a built-artifacts lock and generate in built mode:
-see [fork and build from source](fork-and-build.md).
+see [fork and build from source](fork-and-build.md). The external
+dependencies can still come from a registry mirror alongside the built
+products.
 
 ## 3. Write the platform values and generate
 

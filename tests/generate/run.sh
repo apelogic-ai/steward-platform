@@ -8,11 +8,23 @@
 #   - the generated values pass `helm lint` and `helm template` with the
 #     BOM-pinned charts, pulled by digest, so each chart's values schema applies;
 #   - the rendered Steward chart uses the BOM image digests.
+# For an environment with a registry mirror (environments/production-mirrored,
+# and variants built here), also that every workload image the charts render,
+# and every chart the helmfile installs, is its BOM reference rewritten to the
+# mirror with the BOM digest unchanged, that the workloads carry the image pull
+# secrets, and that the helmfile's CRD manifest hook downloads from the mirror.
 # Then check that the generator rejects inputs it must refuse.
 #
 # Also checks that helmfile/helmfile.yaml.gotmpl builds and renders every
 # committed environment with each BOM chart at its BOM digest (writes
 # generated/<environment>/; set SKIP_HELMFILE=1 to skip).
+#
+# Backward compatibility: the platform values files of every platform release
+# tag (git tags 20*) still validate against the current schema and generate,
+# and give byte-identical output, with the current BOM, to that tag's own
+# generator. An operator's existing platform values therefore keep working and
+# keep their install unchanged; new fields, such as registry, are optional.
+# Needs the tags in the checkout (CI fetches them); set SKIP_COMPAT=1 to skip.
 #
 # Usage: tests/generate/run.sh
 # Needs: jq, yq (mikefarah v4), check-jsonschema, helm, helmfile, openssl.
@@ -31,6 +43,8 @@ trap 'rm -rf "${work}"' EXIT
 failures=0
 fail() { echo "FAIL $*" >&2; failures=$((failures + 1)); }
 pass() { echo "ok   $*"; }
+# shellcheck source=tests/lib/mirror.sh
+. "${repo_root}/tests/lib/mirror.sh"
 
 # Charts, pulled by digest into a clean cache, anonymously.
 export DOCKER_CONFIG="${work}/docker"
@@ -70,6 +84,35 @@ local_chart() {
     postgresql-evaluation | evaluation-edge | steward-edge) echo "$1" ;;
     *) return 1 ;;
   esac
+}
+
+# A mirrored environment: every workload image the charts render is a BOM
+# image rewritten to the mirror, at its BOM digest, and pulls with the
+# configured secrets.
+check_mirrored_images() {
+  local name="$1" values="$2" expected secrets workload image pulls count=0 bad=0
+  shift 2
+  expected="$(mirrored_bom_images "${values}")"
+  secrets="$(yq -r '.registry.imagePullSecrets // [] | join(",")' "${values}")"
+  while IFS=$'\t' read -r workload image pulls; do
+    count=$((count + 1))
+    if ! grep -Fxq -- "${image}" <<<"${expected}"; then
+      fail "${name}: ${workload} runs ${image}, which is not a BOM image rewritten to the mirror"
+      bad=1
+    fi
+    local secret
+    for secret in ${secrets//,/ }; do
+      if [[ ",${pulls}," != *",${secret},"* ]]; then
+        fail "${name}: ${workload} pulls with [${pulls}], without the configured image pull secret ${secret}"
+        bad=1
+      fi
+    done
+  done < <(workload_images "$@")
+  if [[ "${count}" == 0 ]]; then
+    fail "${name}: no workload images rendered"
+  elif [[ "${bad}" == 0 ]]; then
+    pass "${name}: all ${count} workload images are BOM images from the mirror, at their BOM digests${secrets:+, pulled with ${secrets}}"
+  fi
 }
 
 # The value of one environment variable of the rendered apiserver container.
@@ -179,7 +222,7 @@ check_environment() {
   fi
   local component ref
   for component in apiserver controller; do
-    ref="$(jq -r ".products.steward.images.${component}" "${bom}")"
+    ref="$(mirrored "${values}" productImages "$(jq -r ".products.steward.images.${component}" "${bom}")")"
     if grep -Fq "image: ${ref}" "${work}/steward-${name}.yaml"; then
       pass "${name}: Steward ${component} renders the BOM image"
     else
@@ -200,7 +243,7 @@ check_environment() {
       fail "${name}: cert-manager values rejected by the chart"
     fi
     for component in controller webhook cainjector startupapicheck; do
-      ref="$(jq -r ".dependencies[\"cert-manager\"].images.${component}" "${bom}")"
+      ref="$(mirrored "${values}" dependencyImages "$(jq -r ".dependencies[\"cert-manager\"].images.${component}" "${bom}")")"
       grep -Fq "image: \"${ref}\"" "${work}/cert-manager-${name}.yaml" \
         || fail "${name}: cert-manager ${component} does not render ${ref}"
     done
@@ -238,7 +281,7 @@ check_environment() {
     fi
   done
   if [[ -f "${work}/github-oidc-exchange-${name}.yaml" ]]; then
-    ref="$(jq -r '.products["github-oidc-exchange"].images.exchange' "${bom}")"
+    ref="$(mirrored "${values}" productImages "$(jq -r '.products["github-oidc-exchange"].images.exchange' "${bom}")")"
     if grep -Fq "${ref}" "${work}/github-oidc-exchange-${name}.yaml"; then
       pass "${name}: github-oidc-exchange renders the BOM image digest"
     else
@@ -247,7 +290,7 @@ check_environment() {
   fi
   if [[ -f "${work}/envoy-gateway-${name}.yaml" ]]; then
     for component in controller proxy; do
-      ref="$(jq -r ".dependencies[\"envoy-gateway\"].images.${component}" "${bom}")"
+      ref="$(mirrored "${values}" dependencyImages "$(jq -r ".dependencies[\"envoy-gateway\"].images.${component}" "${bom}")")"
       if grep -Fq "${ref}" "${work}/envoy-gateway-${name}.yaml"; then
         pass "${name}: envoy-gateway renders the BOM ${component} image"
       else
@@ -256,6 +299,25 @@ check_environment() {
     done
     if grep -q 'kind: CustomResourceDefinition' "${work}/envoy-gateway-${name}.yaml"; then
       fail "${name}: envoy-gateway still renders its bundled CRDs"
+    fi
+  fi
+
+  if [[ "$(yq -r 'has("registry")' "${values}")" == true ]]; then
+    local rendered_files=("${work}/steward-${name}.yaml") file
+    for file in "${work}/cert-manager-${name}.yaml" "${work}/github-oidc-exchange-${name}.yaml" "${work}/envoy-gateway-${name}.yaml"; do
+      [[ -f "${file}" ]] && rendered_files+=("${file}")
+    done
+    check_mirrored_images "${name}" "${values}" "${rendered_files[@]}"
+    # Envoy Gateway's own proxies take their image and pull secrets from its
+    # configuration, not from a workload of the chart.
+    if [[ -f "${work}/envoy-gateway-${name}.yaml" ]]; then
+      local secret
+      for secret in $(yq -r '.registry.imagePullSecrets // [] | .[]' "${values}"); do
+        yq -r 'select(.kind == "ConfigMap" and .metadata.name == "envoy-gateway-config") | .data["envoy-gateway.yaml"]' \
+            "${work}/envoy-gateway-${name}.yaml" \
+          | yq -e ".envoyProxy.provider.kubernetes.envoyDeployment.pod.imagePullSecrets[] | select(.name == \"${secret}\")" >/dev/null 2>&1 \
+          || fail "${name}: the Envoy proxies do not pull with ${secret}"
+      done
     fi
   fi
 }
@@ -300,14 +362,92 @@ while IFS=$'\t' read -r version ref; do
   fi
 done < <(jq -r '.dependencies.postgresql.tested[] | [.version, .images.postgres] | @tsv' "${bom}")
 
+# A mirrored environment for the variants below: the committed one, changed
+# by a yq expression.
+mirrored_variant() {
+  local label="$1" expression="$2" dir="${work}/variant-$1"
+  mkdir -p "${dir}"
+  yq "${expression}" "${repo_root}/environments/production-mirrored/platform-values.yaml" > "${dir}/platform-values.yaml"
+  if "${generate}" --out "${dir}/out" "${dir}/platform-values.yaml" >"${dir}/generate.log" 2>&1; then
+    echo "${dir}/out"
+  else
+    cat "${dir}/generate.log" >&2
+    return 1
+  fi
+}
+# The registry block is the only difference between the mirrored environment
+# and production-task-auth: without it, the output is theirs, byte for byte
+# (the first header line names the input file).
+if out="$(mirrored_variant unset 'del(.registry) | .environment = "production-task-auth"')" \
+  && "${generate}" --out "${work}/variant-unset/base" \
+    "${repo_root}/environments/production-task-auth/platform-values.yaml" >/dev/null \
+  && diff -r <(cd "${out}" && find . -type f -name '*.yaml' | sort | while read -r f; do echo "== ${f}"; tail -n +2 "${f}"; done) \
+    <(cd "${work}/variant-unset/base" && find . -type f -name '*.yaml' | sort | while read -r f; do echo "== ${f}"; tail -n +2 "${f}"; done) >/dev/null; then
+  pass "mirrored: with the registry block unset, the output is production-task-auth's, byte for byte"
+else
+  fail "mirrored: with the registry block unset, the output differs from production-task-auth's"
+fi
+# A cloud provider identity for the dependency charts instead of a Secret.
+if out="$(mirrored_variant provider '.registry.dependencyCharts.flux = {"provider": "aws"}')" \
+  && yq -e 'select(.kind == "OCIRepository") | .spec.provider == "aws" and (.spec | has("secretRef") | not)' \
+    "${out}/flux/cert-manager.yaml" >/dev/null \
+  && yq -e 'select(.kind == "OCIRepository") | .spec.provider == "aws"' "${out}/flux/envoy-gateway-crds.yaml" >/dev/null \
+  && yq -e 'select(.kind == "OCIRepository") | .spec.secretRef.name == "registry-example-test" and (.spec | has("provider") | not)' \
+    "${out}/flux/steward.yaml" >/dev/null; then
+  pass "mirrored: a class's Flux provider reaches its OCIRepositories only, the chart CRD source included"
+else
+  fail "mirrored: registry.dependencyCharts.flux.provider does not reach exactly its OCIRepositories"
+fi
+# An exact Git mirror URL for one repository; the other stays upstream.
+if out="$(mirrored_variant git-repositories '.registry.gitSources = {"repositories": {"https://github.com/kubernetes-sigs/gateway-api": "https://git.example.test/k8s/gateway-api.git"}}')" \
+  && yq -e 'select(.kind == "GitRepository") | .spec.url == "https://git.example.test/k8s/gateway-api.git" and (.spec | has("secretRef") | not)' \
+    "${out}/flux/gateway-api-crds.yaml" >/dev/null \
+  && yq -e 'select(.kind == "GitRepository") | .spec.url == "https://github.com/apelogic-ai/steward-platform"' \
+    "${out}/flux/steward-edge.yaml" >/dev/null; then
+  pass "mirrored: registry.gitSources.repositories maps one Git repository exactly and leaves the others upstream"
+else
+  fail "mirrored: registry.gitSources.repositories does not map exactly the named repository"
+fi
+# A partial mirror: only the product images come from the mirror.
+if out="$(mirrored_variant partial '.registry = {"productImages": {"prefix": "registry.example.test/p"}}')" \
+  && [[ "$(yq -r .images.repository "${out}/values/steward.yaml")" == registry.example.test/p/apelogic-ai/steward ]] \
+  && [[ "$(yq -r .image.repository "${out}/values/cert-manager.yaml")" == quay.io/jetstack/cert-manager-controller ]] \
+  && [[ "$(yq -r .releases.steward.chart "${out}/helmfile.yaml")" == "$(jq -r '.products.steward.chart | "\(.reference)@\(.digest)"' "${bom}")" ]] \
+  && ! grep -rq imagePullSecrets "${out}/values" \
+  && ! yq -e 'has("registryLogins")' "${out}/helmfile.yaml" >/dev/null 2>&1; then
+  pass "mirrored: a partial mirror rewrites only its class; the rest stays the BOM's"
+else
+  fail "mirrored: a partial mirror changed more than its class"
+fi
+# Two upstream artifacts mapped onto one mirror repository are refused: a BOM
+# with a second registry's image under the same path.
+jq '.dependencies.postgresql.images.other = (.dependencies.postgresql.images.postgres | sub("^docker.io/"; "mirror.gcr.io/"))' \
+  "${bom}" > "${work}/collision-bom.json"
+yq '.registry = {"dependencyImages": {"prefix": "registry.example.test/p"}}' \
+  "${repo_root}/environments/production/platform-values.yaml" > "${work}/collision.yaml"
+if "${generate}" --bom "${work}/collision-bom.json" --out "${work}/collision-out" "${work}/collision.yaml" >"${work}/collision.log" 2>&1; then
+  fail "rejects a mirror that maps two upstream repositories onto one: generator accepted it"
+elif grep -Fq "both map to registry.example.test/p/library/postgres" "${work}/collision.log"; then
+  pass "rejects a mirror that maps two upstream repositories onto one"
+else
+  cat "${work}/collision.log" >&2
+  fail "rejects a mirror that maps two upstream repositories onto one: unexpected error"
+fi
+
+
 # The helmfile renders every committed environment, and installs each BOM
-# chart by its BOM digest.
+# chart by its BOM digest, from the mirror when the environment has one.
 if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
   command -v helmfile >/dev/null || { echo "missing helmfile (or set SKIP_HELMFILE=1)" >&2; exit 2; }
   for values in "${repo_root}"/environments/*/platform-values.yaml; do
     name="$(yq -r .environment "${values}")"
     "${generate}" "${values}" >/dev/null
-    if ! helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
+    helmfile_env=()
+    if [[ "$(yq -r 'has("registry")' "${values}")" == true ]]; then
+      seed_helmfile_cache "${work}/helmfile-cache-${name}" "${repo_root}/generated/${name}/helmfile.yaml"
+      helmfile_env=("HELMFILE_CACHE_HOME=${work}/helmfile-cache-${name}")
+    fi
+    if ! env ${helmfile_env[@]+"${helmfile_env[@]}"} helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
       build > "${work}/helmfile-${name}.yaml" 2>"${work}/helmfile.log"; then
       cat "${work}/helmfile.log" >&2
       fail "${name}: helmfile build failed"
@@ -315,22 +455,22 @@ if [[ "${SKIP_HELMFILE:-0}" != 1 ]]; then
     fi
     # release <TAB> BOM chart, and whether the environment must install it.
     profile="$(yq -r .profile "${values}")"
-    while IFS=$'\t' read -r release pinned profiles; do
-      expected="$(jq -r "${pinned} | \"\\(.reference)@\\(.digest)\"" "${bom}")"
+    while IFS=$'\t' read -r release pinned class profiles; do
+      expected="$(mirrored "${values}" "${class}" "$(jq -r "${pinned} | \"\\(.reference)@\\(.digest)\"" "${bom}")")"
       actual="$(yq -r "select(.releases) | .releases[] | select(.name == \"${release}\") | .chart" "${work}/helmfile-${name}.yaml")"
       if [[ -z "${actual}" ]]; then
         [[ " ${profiles} " == *" ${profile} "* ]] && fail "${name}: helmfile does not install ${release}"
         continue
       elif [[ "${actual}" == "${expected}" ]]; then
-        pass "${name}: helmfile installs ${release} at the BOM digest"
+        pass "${name}: helmfile installs ${release} at the BOM digest$([[ "${actual}" == "$(jq -r "${pinned} | .reference" "${bom}")"@* ]] || echo ", from the mirror")"
       else
         fail "${name}: helmfile installs ${release} from ${actual}, BOM pins ${expected}"
       fi
     done <<'RELEASES'
-steward	.products.steward.chart	core task-auth browser-admin
-cert-manager	.dependencies["cert-manager"].chart	core task-auth browser-admin
-github-oidc-exchange	.products["github-oidc-exchange"].chart	task-auth browser-admin
-envoy-gateway	.dependencies["envoy-gateway"].chart	task-auth browser-admin
+steward	.products.steward.chart	productCharts	core task-auth browser-admin
+cert-manager	.dependencies["cert-manager"].chart	dependencyCharts	core task-auth browser-admin
+github-oidc-exchange	.products["github-oidc-exchange"].chart	productCharts	task-auth browser-admin
+envoy-gateway	.dependencies["envoy-gateway"].chart	dependencyCharts	task-auth browser-admin
 RELEASES
     # task-auth: the Gateway API and Envoy Gateway CRDs are the BOM manifests,
     # which a presync hook applies before the envoy-gateway release.
@@ -342,6 +482,19 @@ RELEASES
         pass "${name}: helmfile applies the BOM CRD manifests before envoy-gateway"
       else
         fail "${name}: the envoy-gateway release does not apply the BOM CRD manifests first"
+      fi
+      # With a manifests mirror, each download comes from it (the hook still
+      # checks the BOM SHA-256); without one, from the BOM URL.
+      expected_urls="$(for dependency in gateway-api-crds envoy-gateway; do
+          url="$(jq -r --arg d "${dependency}" '.dependencies[$d].manifests[0].url' "${bom}")"
+          mirrored_url="$(mirrored "${values}" manifests "${url}")"
+          if [[ "${mirrored_url}" != "${url}" ]]; then echo "${dependency}=${mirrored_url}"; fi
+        done | sort)"
+      actual_urls="$(jq -r '[range(0; length) as $i | select(.[$i] == "--url") | .[$i + 1]] | .[]' <<<"${hook:-[]}" | sort)"
+      if [[ "${actual_urls}" == "${expected_urls}" ]]; then
+        pass "${name}: the CRD manifest hook downloads $([[ -n "${expected_urls}" ]] && echo "from the manifests mirror" || echo "the BOM URLs")"
+      else
+        fail "${name}: the CRD manifest hook downloads [${actual_urls//$'\n'/ }], expected [${expected_urls//$'\n'/ }]"
       fi
     fi
     # browser-admin: Steward renders its own Gateway API objects, so it waits
@@ -355,13 +508,60 @@ RELEASES
         fail "${name}: helmfile must install Steward after envoy-gateway, and not install steward-edge"
       fi
     fi
-    if helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
+    # With a chart mirror, helmfile logs in to each chart registry with the
+    # credentials of its own environment variables.
+    logins="$(yq -r 'select(.releases) | [(.repositories // []) | .[] | select(.oci == true) | .name + "=" + .url] | join(" ")' "${work}/helmfile-${name}.yaml")"
+    expected_logins="$(yq -r '(.registry // {}) | [(.productCharts.prefix | select(. != null) | "steward-platform-product-charts=" + (split("/") | .[0])),
+      (.dependencyCharts.prefix | select(. != null) | "steward-platform-dependency-charts=" + (split("/") | .[0]))] | join(" ")' "${values}")"
+    if [[ "${logins}" == "${expected_logins}" ]]; then
+      if [[ -n "${logins}" ]]; then pass "${name}: helmfile logs in to the chart mirrors (${logins})"; fi
+    else
+      fail "${name}: helmfile OCI repositories [${logins}], expected [${expected_logins}]"
+    fi
+    if env ${helmfile_env[@]+"${helmfile_env[@]}"} helmfile --file "${repo_root}/helmfile/helmfile.yaml.gotmpl" --environment "${name}" \
       template > "${work}/helmfile-template-${name}.yaml" 2>"${work}/helmfile.log"; then
       pass "${name}: helmfile renders every release"
     else
       cat "${work}/helmfile.log" >&2
       fail "${name}: helmfile template failed"
     fi
+  done
+fi
+
+# Backward compatibility with every platform release.
+if [[ "${SKIP_COMPAT:-0}" != 1 ]]; then
+  command -v git >/dev/null || { echo "missing git (or set SKIP_COMPAT=1)" >&2; exit 2; }
+  tags="$(git -C "${repo_root}" tag --list '20*' --sort=version:refname)"
+  [[ -n "${tags}" ]] || { echo "no platform release tags in this checkout; fetch them (git fetch --tags) or set SKIP_COMPAT=1" >&2; exit 2; }
+  for tag in ${tags}; do
+    compat="${work}/compat/${tag}"
+    mkdir -p "${compat}/base" "${compat}/values"
+    git -C "${repo_root}" archive "${tag}" | tar -x -C "${compat}/base"
+    # The same BOM for both generators, at the same relative path, so that
+    # only the generators differ, headers included.
+    cp "${bom}" "${compat}/base/bom/bom.json"
+    for environment_dir in "${compat}"/base/environments/*/; do
+      [[ -f "${environment_dir}/platform-values.yaml" ]] || continue
+      name="$(basename "${environment_dir}")"
+      # Outside both checkouts, so both headers name it the same way.
+      cp -R "${environment_dir}" "${compat}/values/${name}"
+      values="${compat}/values/${name}/platform-values.yaml"
+      if ! "${generate}" --out "${compat}/new/${name}" "${values}" >"${work}/compat.log" 2>&1; then
+        cat "${work}/compat.log" >&2
+        fail "compat ${tag}: environments/${name} no longer validates or generates"
+        continue
+      fi
+      if ! "${compat}/base/scripts/generate.sh" --out "${compat}/old/${name}" "${values}" >"${work}/compat.log" 2>&1; then
+        echo "note compat ${tag}: the ${tag} generator cannot read the current BOM for environments/${name}; output not compared"
+        continue
+      fi
+      if diff -r "${compat}/old/${name}" "${compat}/new/${name}" >"${work}/compat.diff"; then
+        pass "compat ${tag}: environments/${name} validates, and generates byte-identically to the ${tag} generator"
+      else
+        head -40 "${work}/compat.diff" >&2
+        fail "compat ${tag}: environments/${name} generates differently from the ${tag} generator"
+      fi
+    done
   done
 fi
 
@@ -425,6 +625,19 @@ reject "unrestricted browser-auth egress in production" \
 reject "a reserved egress CIDR list" \
   '.networkPolicy.egressCidrs.githubApi = ["192.0.2.0/24"]' \
   "networkPolicy.egressCidrs.githubApi is reserved for governed mode" kind-browser-admin
+reject "an empty registry block" '.registry = {}' "does not match"
+reject "a scheme in an OCI mirror prefix" \
+  '.registry.productImages.prefix = "https://registry.example.test/p"' "does not match"
+reject "a registry mirror prefix without a registry host" \
+  '.registry.dependencyImages.prefix = "steward-platform"' "does not match"
+reject "a trailing slash in a mirror prefix" \
+  '.registry.productCharts.prefix = "registry.example.test/p/"' "does not match"
+reject "a Git mirror over plain HTTP" \
+  '.registry.gitSources.prefix = "http://git.example.test/mirrors"' "does not match" production-mirrored
+reject "a cloud provider together with a Secret for Flux" \
+  '.registry.productCharts.flux.provider = "aws"' "does not match" production-mirrored
+reject "a credential value in the registry block" \
+  '.registry.password = "hunter2"' "does not match" production-mirrored
 reject "the evaluation Gateway without the evaluation Steward CA" \
   '.tls.certManager.issuer = {"source": "operator", "ref": {"name": "ca", "kind": "ClusterIssuer"}}' \
   "edge.gateway.source evaluation needs" kind-task-auth

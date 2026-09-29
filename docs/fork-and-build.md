@@ -13,7 +13,10 @@ verification change. How to build each product is the product's own
 documentation; this page links to it and does not repeat it.
 
 Copying the upstream artifacts into your registry unchanged, with the same
-digests, is a different case: that is a registry mirror, not a build.
+digests, is a different case: that is a
+[registry mirror](registry-mirroring.md), not a build. The two combine: the
+built products from your registry and the external dependencies from a
+mirror ([built products and a registry mirror](#built-products-and-a-registry-mirror)).
 
 ## 1. Build each product at its BOM commit
 
@@ -49,7 +52,9 @@ into Steward (`config.apiserver.stewardRunRelease`), and Steward's
 requires that projection to equal the signed BOM coordinates, so they stay
 upstream. mcp-gw is pinned for the planned governed profile and no profile
 installs it. The external dependencies (cert-manager, Envoy Gateway, the
-Gateway API CRDs, PostgreSQL) always come from the BOM.
+Gateway API CRDs, PostgreSQL) are never built: they keep the BOM's digests,
+pulled from upstream or from a registry mirror of them
+([below](#built-products-and-a-registry-mirror)).
 
 **A fork with changes.** If you build from a commit other than the BOM's, set
 `allowSourceDrift: true` on that product in the lock. The generator accepts it
@@ -139,10 +144,63 @@ Without an `artifacts` block, or with `source: bom`, nothing changes: the
 output is byte-identical to BOM mode.
 
 **Pulling from a private registry.** The lock names references only, never
-credentials. The nodes must be able to pull the images (for example with
-node-level registry credentials), and the tool that installs the charts must
-be able to pull them: Helm's registry login for the helmfile, and access from
-Flux's source controller for the Flux output.
+credentials. The nodes must be able to pull the images: with node-level
+registry credentials, or with `registry.imagePullSecrets` in the platform
+values, which every BOM chart's workloads pull with, the built products
+included (a `registry` block may hold only that field; see
+[registry mirroring](registry-mirroring.md#credentials)). The tool that
+installs the charts must be able to pull them too: Helm's registry login
+(`helm registry login`) for the helmfile, and access from Flux's source
+controller for the Flux output. The generated product `OCIRepository`
+objects carry no `secretRef`, because the `flux` settings of the platform
+values belong to `registry.productCharts`, which built mode refuses (next
+section); give the source controller access to your registry yourself, for
+example with a Kustomize patch that adds `spec.secretRef` or `spec.provider`
+to those two objects.
+
+## Built products and a registry mirror
+
+To pull the external dependencies from your own registry as well, mirror them
+with the `registry` block of the platform values, next to `artifacts`: copy
+them with their BOM digests and point the generator at the copy, as
+[registry mirroring](registry-mirroring.md) describes.
+
+```yaml
+artifacts:
+  source: built
+  builtLock: built-lock.json
+registry:
+  dependencyImages:
+    prefix: registry.example.com/steward-platform
+    keepSourceHost: true
+  dependencyCharts:
+    prefix: registry.example.com/steward-platform
+    keepSourceHost: true
+  imagePullSecrets: [registry-example-com]
+```
+
+- **Product classes are refused.** The lock already names the final location
+  of every product chart and image; `registry.productImages` or
+  `registry.productCharts` would move them a second time, so the schema
+  refuses either one with `source: built`. The other classes
+  (`dependencyImages`, `dependencyCharts`, `gitSources`, `manifests`) and
+  `imagePullSecrets` compose with built mode: the output is the mirrored
+  BOM-mode output with only the product references replaced by the lock's.
+- **The copy list leaves the built products out.** In built mode,
+  `scripts/mirror-list.sh` does not list the charts and images of the
+  products in the lock, since you push them yourself; it still lists
+  everything else, steward-run included.
+- **Checking.** `scripts/verify-digests.sh --mirror PLATFORM_VALUES` checks
+  the built products against the lock that the values name, as
+  `--built-lock` does, and every mirrored artifact in the mirror, both with
+  your own registry credentials. `scripts/verify-digests.sh --built-lock
+  built-lock.json` checks the same lock and the rest of the BOM upstream,
+  anonymously. The two flags are not combined.
+
+`tests/built/run.sh` runs its built-mode checks on
+[`environments/production-mirrored`](../environments/production-mirrored/platform-values.yaml)
+without its product classes, and checks the refusals, the copy list and
+`verify-digests.sh --mirror` in built mode.
 
 ## Verification
 
@@ -153,7 +211,7 @@ products they do not apply, and the scripts say so instead of passing:
 
 | Check | With `--built-lock built-lock.json` |
 |---|---|
-| [`scripts/verify-digests.sh`](../scripts/verify-digests.sh) | The built products are checked against the lock by [`scripts/verify-built-lock.sh`](../scripts/verify-built-lock.sh): the lock matches its schema and the BOM, every chart and image resolves in your registry at its lock digest (with your own registry credentials), and each chart is a Helm chart. A tag written before a digest that now points elsewhere warns; the digest is what gets installed. Their upstream BOM artifacts are not checked. Everything else in the BOM is checked anonymously, as without the flag. |
+| [`scripts/verify-digests.sh`](../scripts/verify-digests.sh) | The built products are checked against the lock by [`scripts/verify-built-lock.sh`](../scripts/verify-built-lock.sh): the lock matches its schema and the BOM, every chart and image resolves in your registry at its lock digest (with your own registry credentials), and each chart is a Helm chart. A tag written before a digest that now points elsewhere warns; the digest is what gets installed. Their upstream BOM artifacts are not checked. Everything else in the BOM is checked anonymously, as without the flag. With `--mirror PLATFORM_VALUES` for platform values in built mode, the built products are checked against the values' lock the same way, and the mirrored artifacts in the mirror ([above](#built-products-and-a-registry-mirror)). |
 | [`scripts/verify-attestations.sh`](../scripts/verify-attestations.sh) | Each artifact of a built product is reported as `SKIP ... built from source`, and the summary counts them. Other products are verified as usual. |
 | [`scripts/verify-signatures.sh`](../scripts/verify-signatures.sh) | Each built product is reported as `SKIP ... built from source`, and the summary counts them. steward-run, which is never built, is still verified: its signed coordinates are what Steward receives. |
 

@@ -11,10 +11,20 @@
 #   - built mode with examples/built/built-lock.json generates the BOM-mode
 #     output with each product chart and image reference replaced by the
 #     lock's, and no upstream digest of a built product left.
+# An environment with a registry mirror (docs/registry-mirroring.md) is
+# checked without its product classes (registry.productImages and
+# productCharts), which built mode refuses: the lock already names where the
+# product artifacts are. Its other classes and image pull Secrets compose with
+# built mode, so for environments/production-mirrored the checks above are
+# built products plus a mirror for everything else.
 # Then: the example lock is what scripts/built-lock-from-digests.sh writes for
 # the BOM; the generator, the helper and scripts/verify-built-lock.sh refuse
-# locks they must refuse; and verify-signatures.sh and verify-attestations.sh
-# skip built products with a notice.
+# locks they must refuse; built mode refuses a mirror of the product classes
+# and keeps the dependency mirror; scripts/mirror-list.sh leaves the built
+# products out; scripts/verify-digests.sh --mirror checks the built products
+# against the lock and the mirrored rest in the mirror (with a stand-in
+# crane); and verify-signatures.sh and verify-attestations.sh skip built
+# products with a notice.
 #
 # With --base REF, also generate every environment with the generator at Git
 # REF (for example origin/main) and require byte-identical BOM-mode output:
@@ -147,10 +157,19 @@ strip_lock_header() {
   find "$1" -type f -name '*.orig' -delete
 }
 
+# Platform values without a mirror of the product classes, which built mode
+# refuses; a registry block left empty is dropped.
+without_product_mirror='del(.registry.productImages, .registry.productCharts) | del(.registry | select(. == {}))'
+
 for values in "${repo_root}"/environments/*/platform-values.yaml; do
   name="$(basename "$(dirname "${values}")")"
   out="${work}/out/${name}"
   mkdir -p "${out}"
+  if yq -e '.registry.productImages != null or .registry.productCharts != null' "${values}" >/dev/null 2>&1; then
+    variant "${values}" "${without_product_mirror}" "${out}/platform-values.yaml"
+    values="${out}/platform-values.yaml"
+    echo "info ${name}: checked without registry.productImages and registry.productCharts, which built mode refuses"
+  fi
   if ! "${generate}" --out "${out}/bom" "${values}" >/dev/null; then
     fail "${name}: BOM-mode generation failed"
     continue
@@ -305,6 +324,158 @@ values_case "source built without a lock" '.artifacts = {"source": "built"}' "do
 values_case "a lock with source bom" ".artifacts = {\"source\": \"bom\", \"builtLock\": \"${example_lock}\"}" "does not match"
 values_case "a lock file that does not exist" '.artifacts = {"source": "built", "builtLock": "no-such-lock.json"}' \
   "no-such-lock.json is missing or empty"
+
+# --- Built mode with a registry mirror ----------------------------------------
+
+mirrored_values="${repo_root}/environments/production-mirrored/platform-values.yaml"
+built_block=".artifacts = {\"source\": \"built\", \"builtLock\": \"${example_lock}\"}"
+
+# A mirror of the product classes would move the lock's references a second
+# time: the schema refuses it, whichever product class is set.
+mirror_refusal() {
+  local label="$1" expression="$2" values="${work}/case-values.yaml"
+  yq "${built_block} | ${expression}" "${mirrored_values}" > "${values}"
+  if "${generate}" --out "${work}/case-out" "${values}" >"${work}/case.log" 2>&1; then
+    fail "refuses built mode with ${label}: generator accepted it"
+  elif grep -Fq -- "does not match" "${work}/case.log"; then
+    pass "refuses built mode with ${label}"
+  else
+    cat "${work}/case.log" >&2
+    fail "refuses built mode with ${label}: expected a schema refusal"
+  fi
+}
+mirror_refusal "a mirror of the product images and charts" '.'
+mirror_refusal "a mirror of the product images" 'del(.registry.productCharts)'
+mirror_refusal "a mirror of the product charts" 'del(.registry.productImages)'
+
+# Built products plus a mirror of the dependency images only, with an image
+# pull Secret: the products come from the lock, the dependency images from the
+# mirror, and every BOM chart's workloads pull with the Secret.
+dependency_mirror='.registry = {"dependencyImages": {"prefix": "registry.example.test/steward-platform", "keepSourceHost": true}, "imagePullSecrets": ["registry-example-test"]}'
+yq "${dependency_mirror} | ${built_block}" "${base_values}" > "${work}/dependency-mirror.yaml"
+if "${generate}" --out "${work}/dependency-mirror" "${work}/dependency-mirror.yaml" >"${work}/case.log" 2>&1; then
+  out="${work}/dependency-mirror/values"
+  problems=()
+  [[ "$(yq -r .images.repository "${out}/steward.yaml")" == "$(jq -r '.products.steward.images.apiserver | split("@")[0] | sub(":[^:/]+$"; "")' "${example_lock}")" ]] \
+    || problems+=("Steward's images are not the lock's")
+  [[ "$(yq -r '.image.repository' "${out}/github-oidc-exchange.yaml")" == "$(jq -r '.products["github-oidc-exchange"].images.exchange | split("@")[0] | sub(":[^:/]+$"; "")' "${example_lock}")" ]] \
+    || problems+=("github-oidc-exchange's image is not the lock's")
+  [[ "$(yq -r .image.repository "${out}/cert-manager.yaml")" == registry.example.test/steward-platform/quay.io/jetstack/cert-manager-controller ]] \
+    || problems+=("cert-manager's image is not from the dependency mirror")
+  for component in envoyGateway envoyProxy; do
+    [[ "$(yq -r ".global.images.${component}.image" "${out}/envoy-gateway.yaml")" == registry.example.test/steward-platform/docker.io/envoyproxy/* ]] \
+      || problems+=("Envoy Gateway's ${component} image is not from the dependency mirror")
+  done
+  for file in steward cert-manager github-oidc-exchange envoy-gateway; do
+    grep -Fq -- "- name: registry-example-test" "${out}/${file}.yaml" \
+      || problems+=("${file} does not pull with the image pull Secret")
+  done
+  if grep -rqE 'registry\.example\.test/steward-platform/(ghcr\.io/)?apelogic-ai/' "${work}/dependency-mirror"; then
+    problems+=("a product reference was rewritten to the mirror")
+  fi
+  if [[ "${#problems[@]}" == 0 ]]; then
+    pass "built mode with a dependency image mirror: products from the lock, dependency images from the mirror, image pull Secrets kept"
+  else
+    fail "built mode with a dependency image mirror: $(IFS=';'; echo "${problems[*]}")"
+  fi
+else
+  cat "${work}/case.log" >&2
+  fail "accepts built mode with a dependency image mirror and image pull Secrets: generator failed"
+fi
+
+# The mirror list in built mode: the built products are left out (they are
+# never copied from upstream); every other entry is the BOM-mode entry.
+if "${repo_root}/scripts/mirror-list.sh" "${work}/dependency-mirror.yaml" > "${work}/list-built.json" 2>"${work}/case.log" \
+  && yq "${dependency_mirror}" "${base_values}" > "${work}/dependency-mirror-bom.yaml" \
+  && "${repo_root}/scripts/mirror-list.sh" "${work}/dependency-mirror-bom.yaml" > "${work}/list-bom.json" 2>>"${work}/case.log"; then
+  if jq -e --slurpfile bom "${work}/list-bom.json" --slurpfile lock "${example_lock}" '
+      ($lock[0].products | keys) as $built
+      | .artifacts == [$bom[0].artifacts[] | select(.id | split(".") as $id | $id[0] == "products" and ($built | index($id[1])) != null | not)]
+      and any(.artifacts[]; .id | startswith("products.steward-run."))
+      and any(.artifacts[]; .class == "dependencyImages" and .mirrored)
+      and ($bom[0].artifacts | any(.[]; .id | startswith("products.steward.")))' "${work}/list-built.json" >/dev/null; then
+    pass "mirror-list.sh in built mode leaves out the built products and lists the rest as in BOM mode"
+  else
+    fail "mirror-list.sh in built mode does not leave out exactly the built products"
+  fi
+else
+  cat "${work}/case.log" >&2
+  fail "mirror-list.sh failed for built mode with a dependency image mirror"
+fi
+
+# verify-digests.sh --mirror in built mode, with a stand-in crane that answers
+# from the lock and the mirror list and logs every reference it is asked
+# about: the built products are checked against the lock, the dependency
+# images in the mirror, and nothing of a built product upstream.
+stubs="${work}/stubs"
+mkdir -p "${stubs}"
+jq -r '.artifacts[] | select(.mirrored and .type == "oci") | "\(.target) \(.digest)"' "${work}/list-built.json" > "${work}/crane-tags"
+jq -r -L "${repo_root}/scripts/lib" 'include "built"; built_lock_artifacts' "${example_lock}" \
+  | awk -F '\t' '$1 == "chart" { print $3 "@" $5 }' > "${work}/crane-charts"
+cat > "${stubs}/crane" <<'CRANE'
+#!/bin/sh
+echo "$*" >> "${CRANE_LOG}"
+case "$2" in *"${CRANE_FAIL:-no-such-reference}"*) echo "stand-in: ${2} not found" >&2; exit 1 ;; esac
+case "$1" in
+  manifest)
+    if grep -qxF "$2" "${CRANE_CHARTS}"; then
+      echo '{"config":{"mediaType":"application/vnd.cncf.helm.config.v1+json"}}'
+    else
+      echo '{"config":{"mediaType":"application/vnd.oci.image.config.v1+json"}}'
+    fi ;;
+  digest)
+    awk -v ref="$2" '$1 == ref { print $2; found = 1 } END { exit !found }' "${CRANE_TAGS}" \
+      || { echo "stand-in: no tag ${2}" >&2; exit 1; } ;;
+  *) echo "stand-in crane: unexpected $*" >&2; exit 99 ;;
+esac
+CRANE
+chmod +x "${stubs}/crane"
+verify_mirror() {
+  : > "${work}/crane.log"
+  PATH="${stubs}:${PATH}" CRANE_LOG="${work}/crane.log" CRANE_TAGS="${work}/crane-tags" \
+    CRANE_CHARTS="${work}/crane-charts" CRANE_FAIL="${1:-}" \
+    "${repo_root}/scripts/verify-digests.sh" --mirror "${work}/dependency-mirror.yaml" >"${work}/digests.log" 2>&1
+}
+if verify_mirror; then
+  problems=()
+  grep -Fq "the built products resolve at their lock digests" "${work}/digests.log" || problems+=("no built-products summary")
+  while IFS=$'\t' read -r _ label repository _ digest; do
+    grep -qxF "manifest ${repository}@${digest}" "${work}/crane.log" || problems+=("${label} not checked against the lock")
+  done < <(jq -r -L "${repo_root}/scripts/lib" 'include "built"; built_lock_artifacts' "${example_lock}")
+  while IFS= read -r ref; do
+    grep -qxF "manifest ${ref}" "${work}/crane.log" || problems+=("${ref} not checked in the mirror")
+  done < <(jq -r '.artifacts[] | select(.mirrored) | .targetRef' "${work}/list-built.json")
+  if jq -r --slurpfile lock "${example_lock}" '.products | to_entries[] | select($lock[0].products[.key] != null) | .value
+      | (.chart.digest // empty), (.images[] | split("@")[1])' "${bom}" | grep -qFf - "${work}/crane.log"; then
+    problems+=("an upstream artifact of a built product was checked")
+  fi
+  if [[ "${#problems[@]}" == 0 ]]; then
+    pass "verify-digests.sh --mirror in built mode checks the built products against the lock and the dependency images in the mirror"
+  else
+    cat "${work}/digests.log" >&2
+    fail "verify-digests.sh --mirror in built mode: $(IFS=';'; echo "${problems[*]}")"
+  fi
+else
+  cat "${work}/digests.log" >&2
+  fail "verify-digests.sh --mirror in built mode failed"
+fi
+if ! verify_mirror "registry.example.com/steward-platform/github-oidc-exchange@" \
+  && grep -Fq "failed its checks" "${work}/digests.log"; then
+  pass "verify-digests.sh --mirror in built mode fails when a lock artifact does not resolve"
+else
+  cat "${work}/digests.log" >&2
+  fail "verify-digests.sh --mirror in built mode passed with an unresolvable lock artifact"
+fi
+if PATH="${stubs}:${PATH}" "${repo_root}/scripts/verify-digests.sh" --built-lock "${example_lock}" \
+  --mirror "${work}/dependency-mirror.yaml" >"${work}/digests.log" 2>&1; then
+  fail "verify-digests.sh accepts --built-lock with --mirror"
+elif grep -Fq "usage:" "${work}/digests.log"; then
+  pass "verify-digests.sh refuses --built-lock with --mirror (--mirror reads the lock from the platform values)"
+else
+  cat "${work}/digests.log" >&2
+  fail "verify-digests.sh --built-lock --mirror: expected a usage error"
+fi
+rm -f "${stubs}/crane"
 
 # --- The helper --------------------------------------------------------------
 
