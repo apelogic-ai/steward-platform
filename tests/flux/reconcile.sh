@@ -20,12 +20,19 @@
 #   - steward-edge is ready and created Steward's task API HTTPRoute and
 #     BackendTLSPolicy.
 #
+# A new platform version is tagged only when it is released, after its release
+# pull request merges. Until the tag of the BOM platformVersion is published,
+# steward-edge is built from STEWARD_EDGE_REF instead: a Git reference of this
+# repository that holds the chart under test (in GitHub Actions, GITHUB_REF).
+#
 # Usage: tests/flux/reconcile.sh
 # Env:
 #   FLUX_INSTALL_MANIFEST  Flux's install.yaml (scripts/ci/install-tools.sh flux-install)
+#   STEWARD_EDGE_REF       the reference to build steward-edge from while the
+#                          platform tag is unpublished (default: GITHUB_REF)
 #   K8S_VERSION            a version from kubernetes.tested (default: the highest)
 #   KEEP_CLUSTER           set to 1 to keep the cluster for debugging
-# Needs: docker, kind, kubectl, jq, yq (mikefarah v4), curl.
+# Needs: docker, kind, kubectl, jq, yq (mikefarah v4), curl, git.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,7 +42,7 @@ flux_install="${FLUX_INSTALL_MANIFEST:?set FLUX_INSTALL_MANIFEST to Flux install
 cluster=steward-flux
 context="kind-${cluster}"
 
-for tool in docker kind kubectl jq yq curl; do
+for tool in docker kind kubectl jq yq curl git; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
 done
 
@@ -82,6 +89,19 @@ cp "${example}/gateway-api-crds.yaml" "${example}/envoy-gateway-crds.yaml" \
   "${example}/envoy-gateway.yaml" "${work}/"
 yq '(select(.kind == "HelmRelease") | .spec.dependsOn) |= map(select(.name != "steward"))' \
   "${example}/steward-edge.yaml" > "${work}/steward-edge.yaml"
+platform_tag="$(yq -r 'select(.kind == "GitRepository") | .spec.ref.tag' "${work}/steward-edge.yaml")"
+platform_url="$(yq -r 'select(.kind == "GitRepository") | .spec.url' "${work}/steward-edge.yaml")"
+edge_source="this repository's platform tag ${platform_tag}"
+if ! git ls-remote --exit-code --tags "${platform_url}" "refs/tags/${platform_tag}" >/dev/null 2>&1; then
+  edge_ref="${STEWARD_EDGE_REF:-${GITHUB_REF:-}}"
+  if [[ -z "${edge_ref}" ]]; then
+    echo "tag ${platform_tag} is not published yet; set STEWARD_EDGE_REF to a reference of ${platform_url} that holds this chart" >&2
+    exit 2
+  fi
+  echo "note: tag ${platform_tag} is not published yet; building steward-edge from ${edge_ref} until this platform version is released"
+  EDGE_REF="${edge_ref}" yq -i '(select(.kind == "GitRepository") | .spec.ref) = {"name": strenv(EDGE_REF)}' "${work}/steward-edge.yaml"
+  edge_source="${edge_ref} (tag ${platform_tag} not published yet)"
+fi
 k apply --server-side -f "${work}/gateway-api-crds.yaml" -f "${work}/envoy-gateway-crds.yaml" \
   -f "${work}/envoy-gateway.yaml" -f "${work}/steward-edge.yaml"
 
@@ -143,7 +163,7 @@ fi
 
 namespace="$(yq -r 'select(.kind == "HelmRelease") | .spec.targetNamespace' "${example}/steward-edge.yaml")"
 if k -n "${namespace}" get httproute steward-task-api >/dev/null && k -n "${namespace}" get backendtlspolicy steward-apiserver >/dev/null; then
-  pass "steward-edge, from this repository's platform tag, created the task API HTTPRoute and BackendTLSPolicy"
+  pass "steward-edge, from ${edge_source}, created the task API HTTPRoute and BackendTLSPolicy"
 else
   fail "steward-edge did not create its HTTPRoute and BackendTLSPolicy"
 fi
