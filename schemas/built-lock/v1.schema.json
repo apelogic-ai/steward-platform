@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/apelogic-ai/steward-platform/main/schemas/built-lock/v1.schema.json",
+  "title": "Steward platform built-artifacts lock, v1",
+  "description": "The product charts and images an operator built from source and pushed to their own registry, with the source each was built from. scripts/generate.sh takes it with platform values artifacts.source built, checks it against the BOM (version, commit, chart version, and every chart and image of each product the profile deploys) and renders these references in place of the BOM's. scripts/built-lock-from-digests.sh writes one. See docs/fork-and-build.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "products"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "products": {
+      "description": "Built products, keyed by their BOM product name (products.<name>). Every product the chosen profile deploys must be here; steward-run, whose artifacts the platform does not deploy, must not.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/product"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "maxLength": 63
+    },
+    "digest": {
+      "description": "Content digest.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "product": {
+      "description": "One product, built from source.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "source",
+        "commit",
+        "images"
+      ],
+      "properties": {
+        "version": {
+          "description": "The product version built. Must equal the BOM's products.<name>.version.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+        },
+        "source": {
+          "description": "The Git repository the product was built from: the BOM's products.<name>.source, or a fork of it. Informational: the commit is what is checked.",
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "commit": {
+          "description": "The full commit SHA the product was built from. Must equal the BOM's products.<name>.commit, the commit of its release tag, unless allowSourceDrift is true.",
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "allowSourceDrift": {
+          "description": "Accept a commit other than the BOM's, for example a fork with local patches. The generator then warns, on every run, that the product is not the tested release. Default false.",
+          "type": "boolean"
+        },
+        "chart": {
+          "description": "The Helm chart as built and pushed to an OCI registry. Required when the BOM pins a chart for the product.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "version",
+            "digest"
+          ],
+          "properties": {
+            "reference": {
+              "description": "OCI chart reference without tag or digest.",
+              "type": "string",
+              "pattern": "^oci://[a-z0-9-]+(\\.[a-z0-9-]+)*(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+$"
+            },
+            "version": {
+              "description": "Chart version (Chart.yaml version) as pushed. Must equal the BOM's products.<name>.chart.version. Not the application version.",
+              "type": "string",
+              "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        "images": {
+          "description": "Built images keyed by the BOM's component names (products.<name>.images). Every component the BOM pins for the product must be here, and no other.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/name"
+          },
+          "additionalProperties": {
+            "description": "Image reference pinned by digest: registry/repository@sha256:..., optionally with a tag before the digest (registry/repository:tag@sha256:...). The digest is what gets installed; without a tag the rendered reference carries the BOM's tag, which the runtime ignores when a digest is present.",
+            "type": "string",
+            "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)*(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+(:[A-Za-z0-9_][A-Za-z0-9._-]{0,127})?@sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}
