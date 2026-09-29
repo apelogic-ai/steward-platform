@@ -59,6 +59,21 @@ jobs:
       - name: Test the generator and helmfile against the pinned charts
         run: tests/generate/run.sh
 
+  hooks:
+    name: helmfile hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.38.2
+      - name: Install tools
+        run: scripts/ci/install-tools.sh helmfile yq
+      - name: Check the CRD hook writes only to the releases' kube context
+        run: tests/hooks/run.sh
+
   flux:
     name: Flux examples
     runs-on: ubuntu-latest

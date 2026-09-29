@@ -22,7 +22,7 @@ template's member roles. Role names are yours; this walkthrough uses
 `evaluator`. The requesting user signs in once (to exist), then:
 
 ```sh
-kubectl -n steward exec deploy/steward-apiserver -- \
+kubectl --context <context> -n steward exec deploy/steward-apiserver -- \
   /usr/local/bin/steward bootstrap-rbac \
   --user-id usr_<requesting user> --grant evaluator --actor <your name>
 ```
