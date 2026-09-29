@@ -32,10 +32,10 @@ built from source, the digest check verifies your lock instead, and the
 attestation and signature checks report those products as skipped: see
 [fork and build from source](fork-and-build.md#verification).
 
-## Attestation coverage: Steward 0.3.3
+## Attestation coverage: Steward 0.3.4
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.3:
+from `.github/workflows/release.yml` at the release tag. For 0.3.4:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -53,7 +53,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.3.tgz` (install the attested
+- the chart archive release asset `steward-0.3.4.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);
@@ -82,7 +82,7 @@ Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files,
 which are release assets rather than attestations, and the chart archive
 release asset `mcp-gateway-0.5.1.tgz` (install the attested OCI chart instead).
 
-## Signature coverage: github-oidc-exchange 0.7.4 and steward-run 0.7.5
+## Signature coverage: github-oidc-exchange 0.7.5 and steward-run 0.7.6
 
 Neither product publishes GitHub artifact attestations for these releases
 (`gh attestation verify` finds none). Both attach cosign Sigstore bundles to
@@ -91,16 +91,20 @@ the GitHub release instead, and the BOM's `signatures` entry lists them.
 | Product | Signer | Verified |
 |---|---|---|
 | github-oidc-exchange | `.github/workflows/release.yml@refs/heads/main` | `release-manifest.json`; the OCI chart and the image (`public-chart-signature.sigstore.json`, `public-image-signature.sigstore.json`) |
-| steward-run | `.github/workflows/portable-release.yml@refs/tags/v0.7.5` | `oss-release-manifest.json`, including its `actionCommit`; the ARC chart and the runner image (`chart-signature.sigstore.json`, `image-signature.sigstore.json`) |
+| steward-run | `.github/workflows/portable-release.yml@refs/tags/v0.7.6` | `oss-release-manifest.json`, including its `actionCommit`; the ARC chart and the runner image (`chart-signature.sigstore.json`, `image-signature.sigstore.json`) |
 
 github-oidc-exchange's release workflow runs on `main` (by
 `workflow_dispatch`), so its signing certificate names `refs/heads/main`, not
 the release tag. steward-run publishes from the release tag itself from 0.7.3,
-so its certificate names `refs/tags/v0.7.5`. For both, the check binds the
+so its certificate names `refs/tags/v0.7.6`. For both, the check binds the
 certificate's workflow commit to the BOM commit, and separately checks that
 the release tag points at that commit.
 
 Not verified by CI: the SBOMs, scan reports, SLSA provenance JSON and checksum
 files on those releases, the in-registry referrers (SLSA provenance and SPDX)
-that github-oidc-exchange also publishes, and the SLSA provenance and SPDX
-attestations that steward-run embeds in its image (BuildKit).
+that github-oidc-exchange also publishes, the SLSA provenance and SPDX
+attestations that steward-run embeds in its image (BuildKit), and
+steward-run's vendored workflow assets (`steward-task-vendored.yml`, its
+template and renderer). The signed `oss-release-manifest.json` lists their
+SHA-256; the platform does not use them, so verify them against it when you
+vendor the workflow.
