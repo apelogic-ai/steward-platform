@@ -6,6 +6,30 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.6
+
+Release notes:
+[docs/releases/2026.10.0-alpha.6.md](docs/releases/2026.10.0-alpha.6.md).
+No breaking changes, and the same product releases as 2026.10.0-alpha.5:
+Steward 0.3.2, github-oidc-exchange 0.7.2, steward-run 0.7.2 and mcp-gw
+0.5.0 (`plannedFor`), with the same digests.
+
+- Flux output for the task-auth and browser-admin profiles, next to core:
+  new examples [`examples/flux/task-auth`](examples/flux/task-auth) and
+  [`examples/flux/browser-admin`](examples/flux/browser-admin). The helmfile's
+  Gateway API and Envoy Gateway CRD hook becomes Flux `Kustomization`s from a
+  pinned `fluxSource` that each BOM manifest now carries, and
+  `charts/steward-edge` is built from this repository at the tag of the
+  `platformVersion`.
+- PostgreSQL 17 tested. The BOM states a minimum PostgreSQL version (16) and
+  the exact tested versions, 16.14 (the default, unchanged) and 17.11, each
+  pinned by digest; the core end-to-end test runs on both. The optional
+  platform values field `database.evaluationVersion` picks the version the
+  evaluation database runs.
+- Documentation: a migration runbook from pre-platform (0.2.6-era) installs,
+  [docs/upgrades/from-pre-platform.md](docs/upgrades/from-pre-platform.md),
+  and the
+  [known security limitations](docs/prerequisites.md#known-security-limitations).
 - Registry mirror override (no breaking changes). The optional platform
   values block `registry` pulls each artifact class from the operator's own
   mirror: product images and charts, dependency images and charts, the Git

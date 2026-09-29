@@ -2,7 +2,8 @@
 
 This runbook is for operators who installed the products before this
 repository existed. It covers the move from the 0.2.6-era set to the release
-set of platform BOM `2026.10.0-alpha.5`:
+set of platform BOM `2026.10.0-alpha.6` (the same product releases as
+`2026.10.0-alpha.5`):
 
 | Product | From (0.2.6-era) | To |
 |---|---|---|

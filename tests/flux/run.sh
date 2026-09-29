@@ -435,7 +435,9 @@ check_steward_edge() {
     git init -q "${dir}"
     # From upstream: the mirror holds the same tag.
     if ! git -C "${dir}" fetch -q --depth 1 "${upstream}" "refs/tags/${tag}" 2>/dev/null; then
-      # A platform version is tagged when it is released.
+      # A platform version is tagged when it is released. Remove the empty
+      # checkout, so that the next example sharing the tag gets the same note.
+      rm -rf "${dir}"
       echo "note ${name}: tag ${tag} is not published yet; steward-edge resolves once this platform version is released"
       return
     fi
