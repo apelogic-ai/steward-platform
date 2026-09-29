@@ -62,7 +62,7 @@ browser (workstation)                       kind cluster
 - **Steward's routes, with the full path list from the platform.** Steward's
   chart renders the edge when the web UI is on, but does not enforce which
   paths go to the apiserver. The generator supplies every public path from
-  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.2/charts/steward/README.md);
+  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.3/charts/steward/README.md);
   a missing one would silently fall through to the web UI. The test proves
   each one reaches the apiserver.
 - **One origin.** The browser origin, web host, route hostname and
@@ -141,9 +141,9 @@ browser (workstation)                       kind cluster
   administer in the browser. Without the CLI, a grant cannot be revoked if
   the browser path is broken; see
   [prerequisites](../prerequisites.md#no-revocation-path-without-the-browser).
-- **One apiserver replica.** Steward 0.3.2 keeps browser sessions in the
+- **One apiserver replica.** Steward 0.3.3 keeps browser sessions in the
   apiserver process; a restart signs everyone out
-  ([browser session contract](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/browser-session-contract-v1.md)).
+  ([browser session contract](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/browser-session-contract-v1.md)).
 - **Google redirect URIs need a public suffix.** The committed kind hostname
   under `.test` is for CI; a real sign-in needs a hostname under a domain on
   the public suffix list ([local access](../browser-admin/local-access.md#choose-the-steward-hostname)).

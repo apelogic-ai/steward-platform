@@ -6,6 +6,36 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.7
+
+Release notes:
+[docs/releases/2026.10.0-alpha.7.md](docs/releases/2026.10.0-alpha.7.md).
+No breaking changes for the implemented profiles. A BOM bump to the current
+product patch releases; the generator, helmfile, Flux output and platform
+values schema are unchanged.
+
+- Steward 0.3.3 (from 0.3.2): no migration and no chart change apart from the
+  version. Governed execution, which no profile here runs, gets a stricter
+  preflight and requires provider-profile bundle 1.2.1.
+- github-oidc-exchange 0.7.4 (from 0.7.2): the default egress policy allows
+  the API server on TCP 443 and 6443 over IPv4 and IPv6
+  (apelogic-ai/github-oidc-exchange#58), DNS replies are admitted from the
+  DNS peers, and `keyring-tool` ships in the image. The new chart values keep
+  their defaults.
+- steward-run 0.7.5 (from 0.7.2): fixes CVE-2026-75803 in the runner image and
+  re-pins the job container; action inputs are unchanged. The action and
+  workflow commits are both the tag commit, so Steward's projected
+  `stewardRunRelease` changes, and the signer identity is now
+  `portable-release.yml` at the release tag.
+- mcp-gw 0.5.1 (from 0.5.0), still `plannedFor: governed`; not 0.5.2, because
+  of apelogic-ai/mcp-gw#100.
+- The Flux examples and the example built-artifacts lock are regenerated for
+  the new coordinates, and product documentation links move to the new
+  release tags. The migration runbook still targets the alpha.6 product set
+  and points to the alpha.7 upgrade notes.
+- Kubernetes: the tested window stays 1.32 to 1.34; 1.35 is not tested again
+  yet (#34).
+
 ## 2026.10.0-alpha.6
 
 Release notes:

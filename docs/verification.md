@@ -32,10 +32,10 @@ built from source, the digest check verifies your lock instead, and the
 attestation and signature checks report those products as skipped: see
 [fork and build from source](fork-and-build.md#verification).
 
-## Attestation coverage: Steward 0.3.2
+## Attestation coverage: Steward 0.3.3
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.2:
+from `.github/workflows/release.yml` at the release tag. For 0.3.3:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -53,7 +53,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.2.tgz` (install the attested
+- the chart archive release asset `steward-0.3.3.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);
@@ -64,10 +64,10 @@ Not attested upstream, so CI does not verify them:
 Steward images and the chart carry only provenance attestations; there are no
 SBOM attestations on the registry artifacts.
 
-## Attestation coverage: mcp-gw 0.5.0
+## Attestation coverage: mcp-gw 0.5.1
 
 mcp-gw publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag `v0.5.0`, built on
+from `.github/workflows/release.yml` at the release tag `v0.5.1`, built on
 GitHub-hosted runners. CI verifies all four BOM artifacts: the OCI chart
 `oci://ghcr.io/apelogic-ai/charts/mcp-gateway` and the `agentgateway`,
 `github-wrapper` and `google-workspace` images.
@@ -80,9 +80,9 @@ release leaves to the operator to pin; the BOM does not pin it.
 
 Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files,
 which are release assets rather than attestations, and the chart archive
-release asset `mcp-gateway-0.5.0.tgz` (install the attested OCI chart instead).
+release asset `mcp-gateway-0.5.1.tgz` (install the attested OCI chart instead).
 
-## Signature coverage: github-oidc-exchange 0.7.2 and steward-run 0.7.2
+## Signature coverage: github-oidc-exchange 0.7.4 and steward-run 0.7.5
 
 Neither product publishes GitHub artifact attestations for these releases
 (`gh attestation verify` finds none). Both attach cosign Sigstore bundles to
@@ -91,13 +91,16 @@ the GitHub release instead, and the BOM's `signatures` entry lists them.
 | Product | Signer | Verified |
 |---|---|---|
 | github-oidc-exchange | `.github/workflows/release.yml@refs/heads/main` | `release-manifest.json`; the OCI chart and the image (`public-chart-signature.sigstore.json`, `public-image-signature.sigstore.json`) |
-| steward-run | `.github/workflows/portable-release.yml@refs/heads/main` | `oss-release-manifest.json`, including its `actionCommit`; the ARC chart and the runner image (`chart-signature.sigstore.json`, `image-signature.sigstore.json`) |
+| steward-run | `.github/workflows/portable-release.yml@refs/tags/v0.7.5` | `oss-release-manifest.json`, including its `actionCommit`; the ARC chart and the runner image (`chart-signature.sigstore.json`, `image-signature.sigstore.json`) |
 
-Both release workflows run on `main` (by `workflow_dispatch`), so the signing
-certificate names `refs/heads/main`, not the release tag. The check therefore
-binds the certificate's workflow commit to the BOM commit, and separately
-checks that the release tag points at that commit.
+github-oidc-exchange's release workflow runs on `main` (by
+`workflow_dispatch`), so its signing certificate names `refs/heads/main`, not
+the release tag. steward-run publishes from the release tag itself from 0.7.3,
+so its certificate names `refs/tags/v0.7.5`. For both, the check binds the
+certificate's workflow commit to the BOM commit, and separately checks that
+the release tag points at that commit.
 
 Not verified by CI: the SBOMs, scan reports, SLSA provenance JSON and checksum
-files on those releases, and the in-registry referrers (SLSA provenance and
-SPDX) that github-oidc-exchange also publishes.
+files on those releases, the in-registry referrers (SLSA provenance and SPDX)
+that github-oidc-exchange also publishes, and the SLSA provenance and SPDX
+attestations that steward-run embeds in its image (BuildKit).

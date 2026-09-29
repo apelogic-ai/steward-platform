@@ -31,8 +31,8 @@ jq -r '.products | to_entries[] | "\(.key)\t\(.value.version)\t\(.value.source)\
 
 | Product | Deployed by | How to build it (product documentation, at the BOM release) |
 |---|---|---|
-| Steward | every profile | [Build and publish from a fork](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/installation-guide.md#build-and-publish-from-a-fork); the Codex reference runtime image: [Codex reference runtime](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/codex-reference-runtime.md) |
-| github-oidc-exchange | task-auth, browser-admin | [Build/publish fork-owned image and chart](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/installation.md#1-buildpublish-fork-owned-image-and-chart) |
+| Steward | every profile | [Build and publish from a fork](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/installation/installation-guide.md#build-and-publish-from-a-fork); the Codex reference runtime image: [Codex reference runtime](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/installation/codex-reference-runtime.md) |
+| github-oidc-exchange | task-auth, browser-admin | [Build/publish fork-owned image and chart](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.4/docs/installation.md#1-buildpublish-fork-owned-image-and-chart) |
 
 Build from the BOM commit, not from a branch or from a tag you retag
 yourself: the generator compares the commit you record with the BOM's. Keep
@@ -48,9 +48,13 @@ profile change does not silently fall back to upstream artifacts.
 Not built: **steward-run** and **mcp-gw**. The platform does not deploy
 steward-run's artifacts; it projects steward-run's signed release coordinates
 into Steward (`config.apiserver.stewardRunRelease`), and Steward's
-[contract](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/installation/governed-platform-compatibility.md)
+[contract](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/installation/governed-platform-compatibility.md)
 requires that projection to equal the signed BOM coordinates, so they stay
-upstream. mcp-gw is pinned for the planned governed profile and no profile
+upstream. steward-run 0.7.5 documents its own
+[fork rebuild](https://github.com/apelogic-ai/steward-run/blob/v0.7.5/docs/customer-rebuild.md);
+how an operator who uses only their own builds would run governed jobs with a
+steward-run build is not decided yet
+([#35](https://github.com/apelogic-ai/steward-platform/issues/35)). mcp-gw is pinned for the planned governed profile and no profile
 installs it. The external dependencies (cert-manager, Envoy Gateway, the
 Gateway API CRDs, PostgreSQL) are never built: they keep the BOM's digests,
 pulled from upstream or from a registry mirror of them
@@ -90,8 +94,8 @@ scripts/built-lock-from-digests.sh --profile task-auth \
   steward.source=https://github.com/example-org/steward \
   steward.commit="$(jq -r .products.steward.commit bom/bom.json)" \
   steward.chart=oci://registry.example.com/charts/steward@sha256:<digest> \
-  steward.images.apiserver=registry.example.com/steward:0.3.2-apiserver@sha256:<digest> \
-  steward.images.controller=registry.example.com/steward:0.3.2-controller@sha256:<digest> \
+  steward.images.apiserver=registry.example.com/steward:0.3.3-apiserver@sha256:<digest> \
+  steward.images.controller=registry.example.com/steward:0.3.3-controller@sha256:<digest> \
   ... \
   github-oidc-exchange.source=https://github.com/example-org/github-oidc-exchange \
   github-oidc-exchange.commit="$(jq -r '.products["github-oidc-exchange"].commit' bom/bom.json)" \

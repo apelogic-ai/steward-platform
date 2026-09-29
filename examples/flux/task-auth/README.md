@@ -47,7 +47,7 @@ any of them gets no Flux output. Before Flux reconciles, create:
 - the exchange's **policy ConfigMap and keyring Secret** in
   `namespaces.identityExchange`, and its **public JWKS ConfigMap**
   (`identityExchange.publicJwksConfigMap`) in the Steward namespace. See the
-  exchange's [integration guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/integration.md).
+  exchange's [integration guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.4/docs/integration.md).
 
 Secrets are referenced by name, never generated.
 

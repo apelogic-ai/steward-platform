@@ -3,7 +3,11 @@
 This runbook is for operators who installed the products before this
 repository existed. It covers the move from the 0.2.6-era set to the release
 set of platform BOM `2026.10.0-alpha.6` (the same product releases as
-`2026.10.0-alpha.5`):
+`2026.10.0-alpha.5`). The current BOM, `2026.10.0-alpha.7`, pins newer patch
+releases of every product (Steward 0.3.3, github-oidc-exchange 0.7.4,
+steward-run 0.7.5, mcp-gw 0.5.1): finish this runbook first, then apply
+[upgrading from 2026.10.0-alpha.6](../releases/2026.10.0-alpha.7.md#upgrading-from-2026100-alpha6)
+in the alpha.7 release notes.
 
 | Product | From (0.2.6-era) | To |
 |---|---|---|

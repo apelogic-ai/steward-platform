@@ -2,30 +2,30 @@
   "$schema": "../../schemas/built-lock/v1.schema.json",
   "products": {
     "steward": {
-      "version": "0.3.2",
+      "version": "0.3.3",
       "source": "https://github.com/example-org/steward",
-      "commit": "ba222fd449138e84fb2900924b39ec4c156a9201",
+      "commit": "807e3e546161338a94dc629f949e3df97ddbc3b0",
       "chart": {
         "reference": "oci://registry.example.com/steward-platform/charts/steward",
-        "version": "0.3.2",
+        "version": "0.3.3",
         "digest": "sha256:0000000000000000000000000000000000000000000000000000000000001000"
       },
       "images": {
-        "apiserver": "registry.example.com/steward-platform/steward:0.3.2-apiserver@sha256:0000000000000000000000000000000000000000000000000000000000001001",
-        "bridge": "registry.example.com/steward-platform/steward:0.3.2-bridge@sha256:0000000000000000000000000000000000000000000000000000000000001002",
-        "codex-reference-runtime": "registry.example.com/steward-platform/steward-codex-runtime:0.140.0-steward-0.3.2@sha256:0000000000000000000000000000000000000000000000000000000000001003",
-        "controller": "registry.example.com/steward-platform/steward:0.3.2-controller@sha256:0000000000000000000000000000000000000000000000000000000000001004",
-        "mint": "registry.example.com/steward-platform/steward:0.3.2-mint@sha256:0000000000000000000000000000000000000000000000000000000000001005",
+        "apiserver": "registry.example.com/steward-platform/steward:0.3.3-apiserver@sha256:0000000000000000000000000000000000000000000000000000000000001001",
+        "bridge": "registry.example.com/steward-platform/steward:0.3.3-bridge@sha256:0000000000000000000000000000000000000000000000000000000000001002",
+        "codex-reference-runtime": "registry.example.com/steward-platform/steward-codex-runtime:0.140.0-steward-0.3.3@sha256:0000000000000000000000000000000000000000000000000000000000001003",
+        "controller": "registry.example.com/steward-platform/steward:0.3.3-controller@sha256:0000000000000000000000000000000000000000000000000000000000001004",
+        "mint": "registry.example.com/steward-platform/steward:0.3.3-mint@sha256:0000000000000000000000000000000000000000000000000000000000001005",
         "web": "registry.example.com/steward-platform/steward@sha256:0000000000000000000000000000000000000000000000000000000000001006"
       }
     },
     "github-oidc-exchange": {
-      "version": "0.7.2",
+      "version": "0.7.4",
       "source": "https://github.com/example-org/github-oidc-exchange",
-      "commit": "003664f0a7ef3a91a92f35445bba0b8f22cb97ba",
+      "commit": "b81cb1acdd0d3fdb19c9714b3c1608a0a11320ad",
       "chart": {
         "reference": "oci://registry.example.com/steward-platform/charts/github-oidc-exchange",
-        "version": "0.7.2",
+        "version": "0.7.4",
         "digest": "sha256:0000000000000000000000000000000000000000000000000000000000001100"
       },
       "images": {
