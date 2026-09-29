@@ -59,6 +59,28 @@ jobs:
       - name: Test the generator and helmfile against the pinned charts
         run: tests/generate/run.sh
 
+  built:
+    name: built artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.38.2
+      - name: Install tools
+        run: scripts/ci/install-tools.sh yq
+      - name: Validate the built-artifacts lock schema
+        run: check-jsonschema --check-metaschema schemas/built-lock/v1.schema.json
+      - name: Check the example lock against the BOM
+        run: scripts/verify-built-lock.sh --offline --profile browser-admin examples/built/built-lock.json
+      # Generates every environment in built mode with the example lock
+      # (substitution), refuses locks with missing entries, and checks that
+      # BOM mode is unchanged by the artifacts block.
+      - name: Test built mode with the example lock
+        run: tests/built/run.sh
+
   flux:
     name: Flux examples
     runs-on: ubuntu-latest

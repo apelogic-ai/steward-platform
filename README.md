@@ -87,6 +87,12 @@ Upgrading products installed before this repository existed? Follow the
 [migration runbook](docs/upgrades/from-pre-platform.md) to move them to the
 current BOM.
 
+Building the products from source, at the BOM's release commits or from a
+fork, into your own registry? See [fork and build from source](docs/fork-and-build.md):
+the generator takes your digests from a built-artifacts lock and checks it
+against the BOM. The external dependencies can still come from a registry
+mirror.
+
 ## What this repository owns, and what it does not
 
 **Products own their contracts.** API shapes, chart values, CRDs, token formats,

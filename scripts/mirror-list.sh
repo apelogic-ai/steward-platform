@@ -17,6 +17,11 @@
 #                database
 #   --mirrored   only the artifacts whose class the platform values mirror
 #
+# Platform values in built mode (artifacts.source built, docs/fork-and-build.md)
+# take the products their built-artifacts lock lists from the operator's own
+# registry, never from upstream, so those products' charts and images are left
+# out of the list; everything else, steward-run included, is listed as above.
+#
 # Output (steward-platform/mirror-list/v1):
 #   {
 #     "apiVersion": "steward-platform/mirror-list/v1",
@@ -75,9 +80,21 @@ check-jsonschema --schemafile "${schema}" "${values_file}" >/dev/null || {
   exit 1
 }
 
+# Built mode: the products of the lock (relative to the values file unless
+# absolute, as scripts/generate.sh reads it), which are not copied.
+built='[]'
+if [[ "$(yq -r '.artifacts.source // "bom"' "${values_file}")" == built ]]; then
+  built_lock="$(yq -r '.artifacts.builtLock' "${values_file}")"
+  [[ "${built_lock}" == /* ]] || built_lock="$(dirname "${values_file}")/${built_lock}"
+  built="$(jq -c '.products | keys' "${built_lock}")" || {
+    echo "error: artifacts.builtLock ${built_lock} is not a readable built-artifacts lock" >&2
+    exit 1
+  }
+fi
+
 yq -o=json '.' "${values_file}" | jq --slurpfile bom "${bom}" --arg profile "${profile}" \
   --argjson installed_only "${installed_only}" --argjson mirrored_only "${mirrored_only}" \
-  -L "${repo_root}/scripts/lib" '
+  --argjson built "${built}" -L "${repo_root}/scripts/lib" '
   include "platform";
   ($profile | if . == "" then null else . end) as $p
   | mirror_collisions($bom[0]) as $_
@@ -89,5 +106,6 @@ yq -o=json '.' "${values_file}" | jq --slurpfile bom "${bom}" --arg profile "${p
       installed: $installed_only,
       artifacts: [mirror_list($bom[0]; $p)[]
         | select(($installed == null) or (.id as $id | any($installed[]; . == $id)))
-        | select(($mirrored_only | not) or .mirrored)]
+        | select(($mirrored_only | not) or .mirrored)
+        | select(.id | split(".") as $id | $id[0] == "products" and ($built | index($id[1])) != null | not)]
     }'

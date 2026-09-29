@@ -14,11 +14,23 @@
 # Everything is fetched anonymously from the public release. Only BOM
 # coordinates are printed, never manifest contents.
 #
-# Usage: scripts/verify-signatures.sh [path/to/bom.json]
+# With --built-lock LOCK (products built from source, docs/fork-and-build.md),
+# the products the lock lists are skipped, each with a notice: the upstream
+# bundles sign the upstream digests, not your build. steward-run, which a lock
+# never lists, is still verified: Steward's stewardRunRelease projection keeps
+# its signed coordinates.
+#
+# Usage: scripts/verify-signatures.sh [--built-lock LOCK] [path/to/bom.json]
 # Needs: cosign v3, jq, curl, git.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+built_lock=""
+if [[ "${1:-}" == --built-lock ]]; then
+  [[ "$#" -ge 2 ]] || { echo "usage: $0 [--built-lock LOCK] [path/to/bom.json]" >&2; exit 2; }
+  built_lock="$2"
+  shift 2
+fi
 bom="${1:-${repo_root}/bom/bom.json}"
 
 for tool in cosign jq curl git; do
@@ -40,6 +52,17 @@ products="$(jq -r '.products | to_entries[] | select(.value.signatures != null) 
 if [[ -z "${products}" ]]; then
   echo "no signed products in ${bom}" >&2
   exit 1
+fi
+skipped=0
+if [[ -n "${built_lock}" ]]; then
+  built="$(jq -r '.products | keys[]' "${built_lock}")"
+  for product in ${products}; do
+    if grep -qxF "${product}" <<<"${built}"; then
+      echo "SKIP products.${product}: built from source (${built_lock}); its upstream cosign bundles sign the upstream digests, not this build, so they are not verified. Check the lock with scripts/verify-built-lock.sh and verify your own build provenance."
+      skipped=$((skipped + 1))
+    fi
+  done
+  products="$(grep -vxF -f <(printf '%s\n' "${built}") <<<"${products}" || true)"
 fi
 
 for product in ${products}; do
@@ -165,4 +188,4 @@ if [[ "${failures}" != 0 ]]; then
   echo "${failures} signature checks failed" >&2
   exit 1
 fi
-echo "verified ${verified} signature bundles"
+echo "verified ${verified} signature bundles$([[ "${skipped}" == 0 ]] || echo "; skipped ${skipped} built-from-source products, whose upstream signatures do not apply")"
