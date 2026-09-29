@@ -6,6 +6,43 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.8
+
+Release notes:
+[docs/releases/2026.10.0-alpha.8.md](docs/releases/2026.10.0-alpha.8.md).
+No breaking changes for the implemented profiles. A BOM bump to the current
+Steward, github-oidc-exchange and steward-run patch releases; the generator,
+helmfile, Flux output and platform values schema are unchanged.
+
+- Steward 0.3.4 (from 0.3.3): no migration. **Required action** for
+  execution-enabled installs, which no profile here is: the
+  `steward-workflows` namespace must exist and be in `runtimeNamespaces`, or
+  the chart refuses the values. Fixes the 0.3.3 known issues (the apiserver
+  crash-loop on an empty `anthropicInferenceEndpoint`,
+  apelogic-ai/steward#212, and the HTTPS-only LiteLLM management URL that the
+  chart NetworkPolicy could not reach, apelogic-ai/steward#213) and restores
+  the HyperShell branding in the web UI. Governed installs move to
+  provider-profile bundle 1.2.2.
+- github-oidc-exchange 0.7.5 (from 0.7.4): non-breaking. Policy v6 gains
+  opt-in owner-wide admission (`repository_id: "*"`) and reusable-workflow
+  selectors; readiness also checks the GitHub JWKS age and the Lease API. The
+  new `config.githubJwksMaxStalenessSeconds` keeps its default. Audit reasons
+  are unchanged.
+- steward-run 0.7.6 (from 0.7.5): a vendorable reusable workflow
+  (`steward-task-vendored.yml`) for callers of a private fork, exchange
+  `4xx` failures classified instead of retried, and signed job container
+  publication. Action inputs are unchanged; the action and workflow commits
+  are the tag commit, so Steward's projected `stewardRunRelease` changes, and
+  the signer identity moves to `refs/tags/v0.7.6`.
+- mcp-gw stays at 0.5.1 (`plannedFor: governed`); 0.5.4 follows in a later
+  alpha once its release is complete.
+- The Flux examples and the example built-artifacts lock are regenerated for
+  the new coordinates, and product documentation links move to the new
+  release tags. The task-auth profile page and test comment note the new v6
+  selectors, which the test does not use. The migration runbook points to the
+  alpha.7 and alpha.8 upgrade notes in order.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
+
 ## 2026.10.0-alpha.7
 
 Release notes:
