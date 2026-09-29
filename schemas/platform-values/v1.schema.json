@@ -344,7 +344,7 @@
       "additionalProperties": false,
       "properties": {
         "taskApi": {
-          "description": "Task tokens issued by github-oidc-exchange (config.outputAudience) and accepted by Steward (taskIdentity.audience). The github-oidc-exchange 0.7.2 chart fixes it to steward-task-api. task-auth profile.",
+          "description": "Task tokens issued by github-oidc-exchange (config.outputAudience) and accepted by Steward (taskIdentity.audience). The github-oidc-exchange 0.7.4 chart fixes it to steward-task-api. task-auth profile.",
           "const": "steward-task-api"
         },
         "mint": { "type": "string", "minLength": 1, "description": "Mint tokens accepted by mcp-gw and the inference proxy. Reserved for governed mode.", "x-reserved": "https://github.com/apelogic-ai/steward-platform/issues/3" },
@@ -483,7 +483,7 @@
               "not": { "enum": ["gmail.com", "googlemail.com"] }
             },
             "organizationId": {
-              "description": "Steward organization ID: a Steward-chosen stable namespace, not a Google or cloud organization ID. Same rule as the Steward 0.3.2 chart schema: 5 to 64 characters, org_ followed by 1 to 60 lowercase ASCII letters, digits, _ or -.",
+              "description": "Steward organization ID: a Steward-chosen stable namespace, not a Google or cloud organization ID. Same rule as the Steward 0.3.3 chart schema: 5 to 64 characters, org_ followed by 1 to 60 lowercase ASCII letters, digits, _ or -.",
               "type": "string",
               "pattern": "^org_[a-z0-9_-]{1,60}$"
             },

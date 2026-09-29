@@ -62,7 +62,7 @@ that belongs to your Workspace organization:
 
    for example `https://steward.eval.example.com/admin/auth/callback`: the
    origin plus Steward's fixed callback path, with no trailing slash
-   ([Steward browser session contract, v0.3.2](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/browser-session-contract-v1.md#routes)).
+   ([Steward browser session contract, v0.3.3](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/browser-session-contract-v1.md#routes)).
    Steward derives it from the origin and sends nothing else, and Google
    refuses a sign-in whose redirect URI is not listed exactly.
 4. **Authorized JavaScript origins**: none. The browser never calls Google

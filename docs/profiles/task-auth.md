@@ -31,7 +31,7 @@ GitHub-hosted job (runner)                  kind cluster
   exchange's issuer, the `steward-task-api` audience, the public Steward
   origin as the protected resource, the exchange's public JWKS in a
   ConfigMap, and federated subjects (policy v6).
-- **github-oidc-exchange** 0.7.2, policy v6, from its chart by digest. Its
+- **github-oidc-exchange** 0.7.4, policy v6, from its chart by digest. Its
   policy ConfigMap and keyring Secret are operator inputs; the test creates
   them.
 - **Edge**: the Gateway API 1.6.1 CRDs (standard channel) and Envoy
@@ -54,7 +54,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 
 ## Choices, and why
 
-- **Policy v6 and `steward-task-v3`.** Steward 0.3.2's release handoff names
+- **Policy v6 and `steward-task-v3`.** Steward 0.3.3's release handoff names
   v5 as its identity-policy contract, and v5 is the exchange's default. But a
   v5 policy must map the actor to a Steward canonical user, and Steward
   answers a v2 token for an unknown canonical user with a plain `401`, which
@@ -62,17 +62,19 @@ the exchange fetches GitHub's public JWKS over the internet.
   by a Google browser login. With v6, Steward verifies the token first and
   then gives a specific, documented answer for an authenticated subject that
   is not yet associated with a user: `403 task_identity_unassociated`
-  ([Steward task submission API, v0.3.2](https://github.com/apelogic-ai/steward/blob/v0.3.2/docs/task-submission-api.md#production-identity-boundary);
-  [exchange consumer contracts, v0.7.2](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.2/docs/consumer-contract-v1.md)).
+  ([Steward task submission API, v0.3.3](https://github.com/apelogic-ai/steward/blob/v0.3.3/docs/task-submission-api.md#production-identity-boundary);
+  [exchange consumer contracts, v0.7.4](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.4/docs/consumer-contract-v1.md)).
 - **The policy admits only this repository's workflow, as far as v6 can
   express it**: the numeric owner and repository IDs, and the exact subject,
   event and ref observed from the job's own signed token. v6 has no selector
   for the workflow file (`job_workflow_ref`); the workflow ref and SHA travel
   in the token's signed source provenance, which the test checks. The policy
   is generated in the job and never committed.
-- **keyring-tool is built from source.** The exchange image does not ship it
+- **keyring-tool is built from source.** The exchange image ships it from
+  0.7.3
   ([apelogic-ai/github-oidc-exchange#55](https://github.com/apelogic-ai/github-oidc-exchange/issues/55)),
-  and its guides run it with `cargo run --locked`.
+  but the test needs it on the runner, outside the cluster, and the guides
+  also run it with `cargo run --locked`.
   [`scripts/ci/build-keyring-tool.sh`](../../scripts/ci/build-keyring-tool.sh)
   builds it from the BOM commit (checked against the release tag) with the
   product's pinned `rust-toolchain.toml` and `Cargo.lock`; CI caches the
@@ -80,7 +82,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 - **Steward's edge route comes from this repository.** Steward's own
   `web.httpRoute` requires its browser web UI, which requires Google browser
   login. `charts/steward-edge` routes only the task API paths from
-  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.2/charts/steward/README.md),
+  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.3/charts/steward/README.md),
   and the edge namespace is admitted through `apiserverIngressNamespaces`.
 - **The action runs by path.** GitHub cannot take a `uses:` reference from an
   expression, so the job checks out `apelogic-ai/steward-run` at the BOM
@@ -88,12 +90,14 @@ the exchange fetches GitHub's public JWKS over the internet.
   runs is the released action at that commit, and a steward-run bump is a BOM
   edit.
 - **Node 24 is set up explicitly.** The composite action runs `node` from
-  `PATH` and declares `engines.node: ">=24 <25"`
+  `PATH` and declares `engines.node: ">=24 <25"`. From steward-run 0.7.3 the
+  action installs Node 24 itself when `PATH` has no Node 24
   ([apelogic-ai/steward-run#69](https://github.com/apelogic-ai/steward-run/issues/69)).
-  The job reports the runner's default Node, installs a pinned Node 24, and
-  checks it against the action's `engines`.
+  The job still reports the runner's default Node, installs a pinned Node 24,
+  and checks it against the action's `engines`, so the Node that runs is
+  known.
 - **Trust uses the action's documented mechanism**, `NODE_EXTRA_CA_CERTS`
-  ([steward-run installation, v0.7.2](https://github.com/apelogic-ai/steward-run/blob/v0.7.2/docs/installation.md)),
+  ([steward-run installation, v0.7.5](https://github.com/apelogic-ai/steward-run/blob/v0.7.5/docs/installation.md)),
   not the deprecated `steward-ca-certificate-file` input.
 
 ## What it proves
