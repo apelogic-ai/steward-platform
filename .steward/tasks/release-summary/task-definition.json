@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "steward.task-definition/v2",
+  "name": "release-summary",
+  "version": 1,
+  "runtime": {
+    "agentRef": "codex@0.140.0"
+  },
+  "prompt": "prompt.md",
+  "outputs": [
+    {
+      "path": "out",
+      "kind": "directory",
+      "required": true
+    }
+  ],
+  "requires": {
+    "authority": {
+      "llms": [
+        {
+          "provider": "openai",
+          "model": "gpt-5.4"
+        }
+      ],
+      "tools": [],
+      "budget": {
+        "monthlyLimit": "10.00",
+        "singleRunLimit": "0.50",
+        "currency": "USD"
+      },
+      "ttl": "15m",
+      "runner": {
+        "platforms": [
+          "linux"
+        ],
+        "memory": null,
+        "compute": null,
+        "storage": null
+      }
+    }
+  }
+}
