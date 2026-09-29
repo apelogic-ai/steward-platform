@@ -114,10 +114,11 @@ which you create in each namespace first. See
 ## The CRD hook and the kube context
 
 The `envoy-gateway` presync hook writes CRDs to the cluster, so it applies to
-exactly the kube context that helmfile uses for the releases, and refuses to
-run rather than guess. Always pass `--kube-context <context>` (or set
-`HELMFILE_KUBE_CONTEXT`); the current kubeconfig context is never used
-implicitly. The hook resolves its context in this order:
+exactly the kube context that helmfile uses for the releases, names that
+context on every `kubectl` call, and refuses to run when the two could
+differ. Pass `--kube-context <context>` (or set `HELMFILE_KUBE_CONTEXT`) to be
+explicit; that is the recommended form. The hook resolves its context in this
+order:
 
 1. helmfile's context for the release, which helmfile hands to the hook:
    `--kube-context`, else `HELMFILE_KUBE_CONTEXT`, else a `kubeContext` on the
@@ -127,20 +128,24 @@ implicitly. The hook resolves its context in this order:
    still works: with a context from step 1 the two must be equal; without
    one it must equal the current kubeconfig context, where Helm then installs
    the releases.
-3. Nothing: the hook refuses.
+3. Neither: Helm installs the releases into the current kubeconfig context,
+   so the hook reads that context once, prints
+   `notice: no kube context given; using current context <name> for both CRDs and releases`,
+   and applies to it by name.
 
 It also refuses when the context is not in the kubeconfig, and when helmfile
 was run with `--kubeconfig`, which helmfile does not pass to hooks. Select a
 kubeconfig file with the `KUBECONFIG` environment variable instead: Helm and
 the hook both read it.
 
-**Troubleshooting.** `refusing to apply: no kube context` means helmfile ran
-without a context: add `--kube-context <context>`. `PLATFORM_KUBE_CONTEXT is
-...` means it names a different cluster from the releases: unset it or make it
-equal. `helmfile was run with --kubeconfig`: run
-`KUBECONFIG=<file> helmfile ...` instead. Before this check, the hook applied
-the CRDs to the current kubeconfig context whenever `PLATFORM_KUBE_CONTEXT`
-was unset, even with `--kube-context`; if you ran the task-auth or
+**Troubleshooting.** `PLATFORM_KUBE_CONTEXT is ...` means it names a
+different cluster from the releases: unset it or make it equal. `helmfile was
+run with --kubeconfig`: run `KUBECONFIG=<file> helmfile ...` instead. `is not
+in the kubeconfig`: check the context name and `KUBECONFIG`. The `no kube
+context given` notice is not an error; add `--kube-context` to make the target
+explicit. Before this fix, the hook applied the CRDs to the current kubeconfig
+context whenever `PLATFORM_KUBE_CONTEXT` was unset, even with
+`--kube-context`; if you ran the task-auth or
 browser-admin sync with a current context other than the target, check that
 cluster for Gateway API and Envoy Gateway CRDs you did not intend
 (`kubectl --context <that context> get crds | grep -E 'gateway.networking.k8s.io|gateway.envoyproxy.io'`).

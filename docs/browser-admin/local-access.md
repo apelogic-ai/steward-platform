@@ -112,8 +112,7 @@ helmfile --file helmfile/helmfile.yaml.gotmpl --environment kind-browser-admin \
 ```
 
 The Envoy Gateway CRD hook applies to the same `--kube-context` as the
-releases, and refuses without one
-([details](../../helmfile/README.md#the-crd-hook-and-the-kube-context)).
+releases ([details](../../helmfile/README.md#the-crd-hook-and-the-kube-context)).
 The [browser-admin end-to-end test](../../tests/e2e/browser-admin/run.sh)
 creates the same inputs in its `operator-inputs` stage; read it for a working
 example.

@@ -7,13 +7,16 @@
 # the current context shows up as a write to "current".
 #
 # 1. The script alone, for each combination of --context, PLATFORM_KUBE_CONTEXT
-#    and current context: it applies to exactly one named context, or refuses
-#    before it downloads or applies anything.
+#    and current context: it applies to exactly one named context (with no
+#    context at all, the current one, where Helm installs the releases, named
+#    explicitly), or refuses before it downloads or applies anything.
 # 2. Through helmfile (the pinned version; SKIP_HELMFILE=1 skips): `helmfile
 #    sync` of the kind-task-auth envoy-gateway release passes the release's
-#    context to the hook (--kube-context and HELMFILE_KUBE_CONTEXT), and
-#    without one, or with helmfile's --kubeconfig flag, which helmfile does not
-#    pass to hooks, the hook refuses and Helm installs nothing.
+#    context to the hook (--kube-context and HELMFILE_KUBE_CONTEXT); without
+#    one, the hook and Helm both use the current context; with helmfile's
+#    --kubeconfig flag, which helmfile does not pass to hooks, or a
+#    disagreeing PLATFORM_KUBE_CONTEXT, the hook refuses and Helm installs
+#    nothing.
 #
 # Usage: tests/hooks/run.sh
 # Needs: jq, sha256sum (or shasum); for part 2 also helmfile and what
@@ -142,8 +145,9 @@ run_script() {
 }
 
 run_script "--context target, current context elsewhere" target -- --context target
-run_script "no context at all" "refuse:no kube context" --
-run_script "empty --context (helmfile without a context)" "refuse:no kube context" -- --context ""
+run_script "no context at all: the current context, named" current --
+run_script "empty --context (helmfile without a context): the current context, named" current -- --context ""
+run_script "no context and no current context" "refuse:has no current context" FAKE_CURRENT= -- --context ""
 run_script "--context and PLATFORM_KUBE_CONTEXT agree" target PLATFORM_KUBE_CONTEXT=target -- --context target
 run_script "--context and PLATFORM_KUBE_CONTEXT differ" "refuse:PLATFORM_KUBE_CONTEXT is 'current'" \
   PLATFORM_KUBE_CONTEXT=current -- --context target
@@ -170,8 +174,10 @@ else
 
   # run_helmfile NAME EXPECT [ENV=VALUE...] -- [HELMFILE ARG...]
   #   EXPECT: a context (the hook applies there and Helm installs the release
-  #   there) or "refuse:<text>" (the sync fails, the hook's <text> is in the
-  #   output, and nothing is applied or installed).
+  #   there), "current-implicit" (helmfile has no context, so Helm runs without
+  #   --kube-context, into the current context, and the hook applies to
+  #   "current" by name, with a notice) or "refuse:<text>" (the sync fails,
+  #   the hook's <text> is in the output, and nothing is applied or installed).
   run_helmfile() {
     local name="$1" expect="$2" status=0
     shift 2
@@ -194,6 +200,14 @@ else
         fail "helmfile: ${name}: expected a refusal mentioning '${expect#refuse:}'; exit ${status}, applied to [${applied//$'\n'/ }]"
         cat "${work}/out" >&2
       fi
+    elif [[ "${expect}" == current-implicit ]]; then
+      if [[ "${status}" == 0 && "${applied}" == current && -n "${installs}" && "${installs}" != *--kube-context* ]] \
+        && grep -qF "no kube context given; using current context current" "${work}/out"; then
+        pass "helmfile: ${name}: the hook applies to the current context by name, where Helm installs the release"
+      else
+        fail "helmfile: ${name}: expected the hook on 'current' by name and Helm on the current context; exit ${status}, hook applied to [${applied//$'\n'/ }], helm: ${installs}"
+        cat "${work}/out" >&2
+      fi
     else
       if [[ "${status}" == 0 && "${applied}" == "${expect}" && "${installs}" == *"--kube-context ${expect} "* ]]; then
         pass "helmfile: ${name}: the hook and the release both target ${expect}"
@@ -207,7 +221,7 @@ else
   run_helmfile "--kube-context target, current context elsewhere" target -- --kube-context target
   run_helmfile "HELMFILE_KUBE_CONTEXT=target" target HELMFILE_KUBE_CONTEXT=target --
   run_helmfile "--kube-context and PLATFORM_KUBE_CONTEXT agree" target PLATFORM_KUBE_CONTEXT=target -- --kube-context target
-  run_helmfile "no context" "refuse:no kube context" --
+  run_helmfile "no context: the current context for both" current-implicit --
   run_helmfile "--kube-context and PLATFORM_KUBE_CONTEXT differ" "refuse:PLATFORM_KUBE_CONTEXT is 'current'" \
     PLATFORM_KUBE_CONTEXT=current -- --kube-context target
   run_helmfile "only PLATFORM_KUBE_CONTEXT, not the current context" "refuse:its releases go to the current context 'current'" \

@@ -22,12 +22,14 @@
 #                               Without it, it must equal the current kubeconfig
 #                               context, which is where helmfile installs the
 #                               releases when it has no context of its own.
+#        With neither, the releases go to the current kubeconfig context, so the
+#        script resolves that context once, says so, and applies to it by name.
 #        PLATFORM_NETRC_FILE  a netrc file with the mirror's credentials
 #                             (curl --netrc-file), when it needs them.
 # Needs: kubectl, jq, curl, sha256sum (or shasum).
 #
-# It never applies to an implicit context: with neither --context nor
-# PLATFORM_KUBE_CONTEXT it refuses, and every kubectl call names the context.
+# Every kubectl call names the context it resolved, so the CRDs land on the
+# same cluster as the releases.
 # helmfile does not pass its --kubeconfig flag to hooks, so when the parent
 # helmfile was given one the script refuses; select the kubeconfig file with
 # the KUBECONFIG environment variable instead, which Helm and kubectl both read.
@@ -97,9 +99,15 @@ if [[ -n "${context}" && -n "${platform_context}" && "${context}" != "${platform
   die "refusing to apply: the release's kube context is '${context}' but PLATFORM_KUBE_CONTEXT is '${platform_context}'. Unset PLATFORM_KUBE_CONTEXT or make the two equal."
 fi
 if [[ -z "${context}" && -z "${platform_context}" ]]; then
-  die "refusing to apply: no kube context. Run helmfile with --kube-context <context> (or set HELMFILE_KUBE_CONTEXT); this hook never falls back to the current kubeconfig context."
-fi
-if [[ -z "${context}" ]]; then
+  # Neither helmfile nor the operator named a context, so Helm installs the
+  # releases into the current context. Resolve it once and name it on every
+  # kubectl call, so the CRDs go to the same cluster.
+  current="$(kubectl config current-context 2>/dev/null || true)"
+  [[ -n "${current}" ]] \
+    || die "refusing to apply: no kube context given and the kubeconfig (${KUBECONFIG:-the default kubeconfig}) has no current context. Run helmfile with --kube-context <context>."
+  echo "notice: no kube context given; using current context ${current} for both CRDs and releases. Pass --kube-context to be explicit."
+  context="${current}"
+elif [[ -z "${context}" ]]; then
   # helmfile has no context of its own, so Helm installs the releases into the
   # current context. Apply only if that is PLATFORM_KUBE_CONTEXT.
   current="$(kubectl config current-context 2>/dev/null || true)"

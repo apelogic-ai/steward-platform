@@ -139,9 +139,10 @@ releases:
         # Hooks run in this directory. helmfile renders the context argument
         # when the hook runs: the kube context of this release, that is
         # --kube-context (or HELMFILE_KUBE_CONTEXT), else the release's or
-        # this environment's kubeContext. The script refuses to apply without
-        # a context, or when PLATFORM_KUBE_CONTEXT disagrees with it; it never
-        # uses the current kubeconfig context implicitly. See README.md.
+        # this environment's kubeContext. The script refuses when
+        # PLATFORM_KUBE_CONTEXT disagrees with it. With no context at all it
+        # uses the current context, where Helm installs the releases, and names
+        # it on every kubectl call. See README.md.
         command: ../scripts/apply-manifests.sh
         args:
           - --context
