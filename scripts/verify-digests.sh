@@ -11,20 +11,47 @@
 # A manifest's Git fluxSource is checked the same way: its tag still names its
 # commit, or a warning (Flux checks out the commit either way).
 #
-# Needs: crane, jq, curl, git, sha256sum (or shasum).
+# With --built-lock LOCK (products built from source, docs/fork-and-build.md),
+# the products the lock lists are checked against the lock instead, by
+# scripts/verify-built-lock.sh with your own registry credentials; their
+# upstream BOM artifacts are not checked. Everything else is checked as above.
+#
+# Needs: crane, jq, curl, git, sha256sum (or shasum); with --built-lock, also
+# check-jsonschema.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+built_lock=""
+if [[ "${1:-}" == --built-lock ]]; then
+  [[ "$#" -ge 2 ]] || { echo "usage: $0 [--built-lock LOCK] [path/to/bom.json]" >&2; exit 2; }
+  built_lock="$2"
+  shift 2
+fi
 bom="${1:-${repo_root}/bom/bom.json}"
 
 for tool in crane jq curl git; do
   command -v "${tool}" >/dev/null || { echo "missing ${tool}" >&2; exit 2; }
 done
 
+work="$(mktemp -d)"
+trap 'rm -rf "${work}"' EXIT
+
+# Built products: check them against the lock, with the caller's registry
+# credentials (before the anonymous Docker config below), then leave them out
+# of the BOM checked here.
+built_failed=0
+if [[ -n "${built_lock}" ]]; then
+  "${repo_root}/scripts/verify-built-lock.sh" --bom "${bom}" "${built_lock}" || built_failed=1
+  jq --slurpfile lock "${built_lock}" '.products |= with_entries(select(.key as $name | $lock[0].products | has($name) | not))' \
+    "${bom}" > "${work}/bom.json"
+  bom="${work}/bom.json"
+  echo "info products in ${built_lock} were checked against it, not against their upstream BOM artifacts"
+fi
+
 # Anonymous access only: an empty Docker config hides any local credentials.
-DOCKER_CONFIG="$(mktemp -d)"
+DOCKER_CONFIG="${work}/docker"
+mkdir "${DOCKER_CONFIG}"
 export DOCKER_CONFIG
-trap 'rm -rf "${DOCKER_CONFIG}"' EXIT
 
 sha256_of() {
   if command -v sha256sum >/dev/null; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
@@ -124,4 +151,8 @@ if [[ "${failures}" != 0 ]]; then
   echo "${failures} of ${checked} artifacts failed" >&2
   exit 1
 fi
-echo "all ${checked} artifacts resolve anonymously at their pinned digests"
+if [[ "${built_failed}" != 0 ]]; then
+  echo "the built-artifacts lock ${built_lock} failed its checks" >&2
+  exit 1
+fi
+echo "all ${checked} artifacts resolve anonymously at their pinned digests$([[ -z "${built_lock}" ]] || echo "; the built products resolve at their lock digests")"
