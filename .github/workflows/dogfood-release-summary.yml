@@ -1,0 +1,86 @@
+# Dogfood task 1 (#46): summarize a platform release and check its notes against the BOM.
+# The task package lives in .steward/tasks/release-summary/ and is read by Steward at the
+# triggering commit. Every job is skipped until the repository variable STEWARD_API_URL is set.
+# See docs/dogfooding.md.
+name: dogfood release summary
+
+'on':
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Platform release tag to summarize (for example 2026.10.0-alpha.7)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: dogfood-release-summary-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Collect release inputs
+    if: ${{ vars.STEWARD_API_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Collect inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: scripts/dogfood/release-summary-inputs.sh "$TAG" steward-input
+      - name: Upload task input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-summary-input
+          path: steward-input/
+          if-no-files-found: error
+          retention-days: 1
+
+  governed:
+    name: Run governed release summary
+    needs: prepare
+    permissions:
+      contents: read
+      id-token: write
+    uses: apelogic-ai/steward-run/.github/workflows/steward-task-self-hosted.yml@302d854c995ed784df911df9d86e53c60c350f08 # v0.7.5
+    with:
+      runner-label: ${{ vars.STEWARD_RUNNER_LABEL }}
+      invocation-path: .steward/tasks/release-summary/invocation.json
+      input-artifact: release-summary-input
+      output-artifact: release-summary-output
+      steward-api-url: ${{ vars.STEWARD_API_URL }}
+
+  publish:
+    name: Publish the summary
+    needs: governed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download governed output
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-summary-output
+          path: output
+      - name: Attach to the release and the job summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          report="$(find output -type f -name release-summary.md -size +0c -print -quit)"
+          test -n "$report" || { echo "the task produced no release-summary.md" >&2; exit 1; }
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          gh release upload "$TAG" "$report" --clobber

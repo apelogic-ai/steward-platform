@@ -1,0 +1,8 @@
+{
+  "contractVersion": "steward.task/v2",
+  "package": {
+    "repository": "https://github.com/apelogic-ai/steward-platform.git",
+    "commit": "git:trigger",
+    "path": ".steward/tasks/release-summary/task-definition.json"
+  }
+}
