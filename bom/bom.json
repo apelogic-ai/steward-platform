@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/bom/v1.schema.json",
-  "platformVersion": "2026.10.0-alpha.7",
+  "platformVersion": "2026.10.0-alpha.8",
   "kubernetes": {
     "minVersion": "1.32",
     "maxVersion": "1.34",
@@ -21,27 +21,27 @@
   },
   "products": {
     "steward": {
-      "version": "0.3.3",
+      "version": "0.3.4",
       "source": "https://github.com/apelogic-ai/steward",
-      "commit": "807e3e546161338a94dc629f949e3df97ddbc3b0",
-      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.3",
+      "commit": "45df8aee57e90b7b8990607f3d8965e125dbb279",
+      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.4",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/steward",
-        "version": "0.3.3",
-        "digest": "sha256:ab4c87ff158aeb52266d72309002b4d33332b179e963f0807e1418505a867e46"
+        "version": "0.3.4",
+        "digest": "sha256:d2a70478ec8da75664d556d9f0f5a77df333ec05c504dd4a70fd05ef4ac4931b"
       },
       "images": {
-        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.3-apiserver@sha256:b339716ecd3b0926cefff56501a7bc4a2933ef835f913b9886e44f3a03bf6249",
-        "controller": "ghcr.io/apelogic-ai/steward:0.3.3-controller@sha256:58fb59a683799cc05616bed35ce8212825f8b03162051e6788070b51e6baee40",
-        "mint": "ghcr.io/apelogic-ai/steward:0.3.3-mint@sha256:e588ef02ef949031c0a6fdb9d8e193fd777851092f79566c5bdf173138230431",
-        "bridge": "ghcr.io/apelogic-ai/steward:0.3.3-bridge@sha256:d2e921708ba59a51d8bfb80109c2a987e852ade5fb4c043cbd48ef18494d54f1",
-        "web": "ghcr.io/apelogic-ai/steward:0.3.3-web@sha256:ea52ca8184a5045168c1a9056e1aa231acdf7b6e5fd9f1a60638784bfe17d845",
-        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.3@sha256:a782657e7180fe63d0e49fd3c8993fa506833db68c127b600602291c8c3da453"
+        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.4-apiserver@sha256:ea8d3b666a98ae6b09f17badeb16cce1592c7a98fac767ad6a527d62f3fbfda1",
+        "controller": "ghcr.io/apelogic-ai/steward:0.3.4-controller@sha256:25a42547cb6b27fd2ad0b8cdd06a7fb446dd6afdbaf190d812c4e635d36e6083",
+        "mint": "ghcr.io/apelogic-ai/steward:0.3.4-mint@sha256:ad12c1edf2129263a441b71edbf8a5799595ff8cfad1f02a7f16737dd48e5dcc",
+        "bridge": "ghcr.io/apelogic-ai/steward:0.3.4-bridge@sha256:0258f01d20654c0720fa6b8f8775b804801baae8f09228589d9e69fc44473ab4",
+        "web": "ghcr.io/apelogic-ai/steward:0.3.4-web@sha256:e578823278bd5acbcc0943f600b01bf6c46e4bafc78e8b24268a551588065a05",
+        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.4@sha256:9e744d9e22a653b1cd1d8e903c1ecd11e38b9691ab4f11e48aff7c6dde91d50f"
       },
       "provenance": {
         "predicateType": "https://slsa.dev/provenance/v1",
         "signerWorkflow": "apelogic-ai/steward/.github/workflows/release.yml",
-        "sourceRef": "refs/tags/v0.3.3",
+        "sourceRef": "refs/tags/v0.3.4",
         "subjects": ["chart", "apiserver", "controller", "mint", "bridge", "web", "codex-reference-runtime"]
       },
       "minPeers": {
@@ -49,17 +49,17 @@
       }
     },
     "github-oidc-exchange": {
-      "version": "0.7.4",
+      "version": "0.7.5",
       "source": "https://github.com/apelogic-ai/github-oidc-exchange",
-      "commit": "b81cb1acdd0d3fdb19c9714b3c1608a0a11320ad",
-      "release": "https://github.com/apelogic-ai/github-oidc-exchange/releases/tag/v0.7.4",
+      "commit": "55154dc8b117f652a4c335be31ba59787a5ee5e7",
+      "release": "https://github.com/apelogic-ai/github-oidc-exchange/releases/tag/v0.7.5",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/github-oidc-exchange",
-        "version": "0.7.4",
-        "digest": "sha256:042650903a6900da7d1deecc831c8346171e6631131a889043184f1b0e415b23"
+        "version": "0.7.5",
+        "digest": "sha256:b3d49c4756f549ebd5230d198d4f75c37984a577941a16430876c0d5ccf2a84a"
       },
       "images": {
-        "exchange": "ghcr.io/apelogic-ai/github-oidc-exchange:0.7.4@sha256:b9675332a506b6de310cfe3113822c7012c1a10f9389d161180068a03947c953"
+        "exchange": "ghcr.io/apelogic-ai/github-oidc-exchange:0.7.5@sha256:345f4f4929f1a95a962ef79642057dd32e6d37a125bc3cc57b01a5b0fc58b4da"
       },
       "signatures": {
         "certificateIdentity": "https://github.com/apelogic-ai/github-oidc-exchange/.github/workflows/release.yml@refs/heads/main",
@@ -72,27 +72,27 @@
       }
     },
     "steward-run": {
-      "version": "0.7.5",
+      "version": "0.7.6",
       "source": "https://github.com/apelogic-ai/steward-run",
-      "commit": "302d854c995ed784df911df9d86e53c60c350f08",
-      "release": "https://github.com/apelogic-ai/steward-run/releases/tag/v0.7.5",
+      "commit": "fbfd6c093e6d91352473cd49dc8bbb86fad59ace",
+      "release": "https://github.com/apelogic-ai/steward-run/releases/tag/v0.7.6",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/steward-run-arc",
-        "version": "0.7.5",
-        "digest": "sha256:b8b115e7aa87d0a1f2cb3bc31e41110c30f0106dc42a87663c57d78b1a63b94a"
+        "version": "0.7.6",
+        "digest": "sha256:4aded0127e0f006febe551e3bd8444689f530af4f475529b15cdccfa2875735c"
       },
       "images": {
-        "runner": "ghcr.io/apelogic-ai/steward-run:0.7.5@sha256:d249f3cedfde343b5bba4e85ab14b4c1486caa2f70c35c8677912cf969d8d8eb"
+        "runner": "ghcr.io/apelogic-ai/steward-run:0.7.6@sha256:bd6d7b4ef4cf2658096d5c2bfbc0fec6d7790c478832cf374cff4218338c86b9"
       },
       "action": {
-        "commit": "302d854c995ed784df911df9d86e53c60c350f08"
+        "commit": "fbfd6c093e6d91352473cd49dc8bbb86fad59ace"
       },
       "workflow": {
         "repository": "apelogic-ai/steward-run",
-        "commit": "302d854c995ed784df911df9d86e53c60c350f08"
+        "commit": "fbfd6c093e6d91352473cd49dc8bbb86fad59ace"
       },
       "signatures": {
-        "certificateIdentity": "https://github.com/apelogic-ai/steward-run/.github/workflows/portable-release.yml@refs/tags/v0.7.5",
+        "certificateIdentity": "https://github.com/apelogic-ai/steward-run/.github/workflows/portable-release.yml@refs/tags/v0.7.6",
         "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
         "releaseManifest": { "asset": "oss-release-manifest.json", "bundle": "oss-release-manifest.sigstore.json", "schemaVersion": 3 },
         "subjects": {
