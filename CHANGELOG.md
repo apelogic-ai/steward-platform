@@ -6,6 +6,35 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.9
+
+Release notes:
+[docs/releases/2026.10.0-alpha.9.md](docs/releases/2026.10.0-alpha.9.md).
+No breaking changes for the implemented profiles. A BOM bump to the Steward
+0.3.5 security patch and mcp-gw 0.5.4; the generator, helmfile, Flux output
+and platform values schema are unchanged.
+
+- Steward 0.3.5 (from 0.3.4): security patch. The apiserver and controller
+  ClusterRoles no longer grant Kubernetes user and group impersonation;
+  AgentRuntime writes use the exact Steward service-account identities and
+  stay subject to the webhook checks. No migration, no provider-profile
+  transition and no chart value change; the v0.3.4 contracts are retained.
+  During a rolling upgrade, retry rejected writes once the apiserver and
+  controller have converged (Steward changelog upgrade note).
+- mcp-gw 0.5.4 (from 0.5.1), still `plannedFor: governed`: restores the
+  Google Workspace tools broken in 0.5.2 (apelogic-ai/mcp-gw#100), recovers
+  the HOP-1 JWKS without an agentgateway restart, and resolves wrapper apt
+  packages from a dated snapshot. 0.5.3 was never published.
+- github-oidc-exchange 0.7.5 and steward-run 0.7.6 are unchanged.
+- The Flux examples and the example built-artifacts lock are regenerated for
+  the new coordinates, and Steward documentation links move to the v0.3.5
+  tag. The migration runbook points to the alpha.7, alpha.8 and alpha.9
+  upgrade notes in order.
+- The dogfood release summary workflow pins steward-run 0.7.6's self-hosted
+  reusable workflow (commit `fbfd6c0`, from 0.7.5); its inputs are
+  unchanged.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
+
 ## 2026.10.0-alpha.8
 
 Release notes:
