@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/bom/v1.schema.json",
-  "platformVersion": "2026.10.0-alpha.8",
+  "platformVersion": "2026.10.0-alpha.9",
   "kubernetes": {
     "minVersion": "1.32",
     "maxVersion": "1.34",
@@ -21,27 +21,27 @@
   },
   "products": {
     "steward": {
-      "version": "0.3.4",
+      "version": "0.3.5",
       "source": "https://github.com/apelogic-ai/steward",
-      "commit": "45df8aee57e90b7b8990607f3d8965e125dbb279",
-      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.4",
+      "commit": "7ff71e37bbe3008dc490245ddee465f3ce2d8e75",
+      "release": "https://github.com/apelogic-ai/steward/releases/tag/v0.3.5",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/steward",
-        "version": "0.3.4",
-        "digest": "sha256:d2a70478ec8da75664d556d9f0f5a77df333ec05c504dd4a70fd05ef4ac4931b"
+        "version": "0.3.5",
+        "digest": "sha256:5911e46f4d3257f25c7d0b082368f8d8698c154abb836fd1d52d82071dfba8c3"
       },
       "images": {
-        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.4-apiserver@sha256:ea8d3b666a98ae6b09f17badeb16cce1592c7a98fac767ad6a527d62f3fbfda1",
-        "controller": "ghcr.io/apelogic-ai/steward:0.3.4-controller@sha256:25a42547cb6b27fd2ad0b8cdd06a7fb446dd6afdbaf190d812c4e635d36e6083",
-        "mint": "ghcr.io/apelogic-ai/steward:0.3.4-mint@sha256:ad12c1edf2129263a441b71edbf8a5799595ff8cfad1f02a7f16737dd48e5dcc",
-        "bridge": "ghcr.io/apelogic-ai/steward:0.3.4-bridge@sha256:0258f01d20654c0720fa6b8f8775b804801baae8f09228589d9e69fc44473ab4",
-        "web": "ghcr.io/apelogic-ai/steward:0.3.4-web@sha256:e578823278bd5acbcc0943f600b01bf6c46e4bafc78e8b24268a551588065a05",
-        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.4@sha256:9e744d9e22a653b1cd1d8e903c1ecd11e38b9691ab4f11e48aff7c6dde91d50f"
+        "apiserver": "ghcr.io/apelogic-ai/steward:0.3.5-apiserver@sha256:bac70bb0a505436b49cb4d609b2034ba0af83cf16db0792ea9e466e08577f904",
+        "controller": "ghcr.io/apelogic-ai/steward:0.3.5-controller@sha256:4984f58619e8905c217c287eb5f519bf0dc2cacba4203d01f5f142293b4752cc",
+        "mint": "ghcr.io/apelogic-ai/steward:0.3.5-mint@sha256:7f8d6e398096071a3c47ea8a721e1c187fbb5f9e84cd36d8399b4333f5e87f2f",
+        "bridge": "ghcr.io/apelogic-ai/steward:0.3.5-bridge@sha256:8b2f08e3128855641d78f6aaf3d15851171340b3c3748dd4a9622f25445b0e50",
+        "web": "ghcr.io/apelogic-ai/steward:0.3.5-web@sha256:8846c5f36c8e4d12e4d2c141237dd4183ba41727f6fd6128dc372e0e3f70b24b",
+        "codex-reference-runtime": "ghcr.io/apelogic-ai/steward-codex-runtime:0.140.0-steward-0.3.5@sha256:9b303079c64cbb697e9387295ee757e5814689be45a04138fac33a6a3df7194c"
       },
       "provenance": {
         "predicateType": "https://slsa.dev/provenance/v1",
         "signerWorkflow": "apelogic-ai/steward/.github/workflows/release.yml",
-        "sourceRef": "refs/tags/v0.3.4",
+        "sourceRef": "refs/tags/v0.3.5",
         "subjects": ["chart", "apiserver", "controller", "mint", "bridge", "web", "codex-reference-runtime"]
       },
       "minPeers": {
@@ -102,24 +102,24 @@
       }
     },
     "mcp-gw": {
-      "version": "0.5.1",
+      "version": "0.5.4",
       "source": "https://github.com/apelogic-ai/mcp-gw",
-      "commit": "8063e823594e341504921f85cb8f9f051f439b87",
-      "release": "https://github.com/apelogic-ai/mcp-gw/releases/tag/v0.5.1",
+      "commit": "5600919a5571236d5bba7655142c385e29a0338c",
+      "release": "https://github.com/apelogic-ai/mcp-gw/releases/tag/v0.5.4",
       "chart": {
         "reference": "oci://ghcr.io/apelogic-ai/charts/mcp-gateway",
-        "version": "0.5.1",
-        "digest": "sha256:74401632b3b942eca2f74b018d09ce1c108b5deee801ee176dc296494fa5f295"
+        "version": "0.5.4",
+        "digest": "sha256:6d53252a1cbb36251e2c097f17bddd8a78f38452f5e48e2e312d924a064062d2"
       },
       "images": {
-        "agentgateway": "ghcr.io/apelogic-ai/mcp-gw-agentgateway:0.5.1@sha256:c2fc33954758fc94b0b1f59176ee12eaec56e3c77064807abf273d75c9c7f5bd",
-        "github-wrapper": "ghcr.io/apelogic-ai/mcp-gw-github-wrapper:0.5.1@sha256:ae18d04e4b704b83c6c1cd3d3bb5ec246b1328cd15869750d45779eb66c36486",
-        "google-workspace": "ghcr.io/apelogic-ai/mcp-gw-google-workspace:0.5.1@sha256:cff3a2ea058ce7c43f5388ef2e64ff6bc9caecf14d52f7b1e59cc31469210325"
+        "agentgateway": "ghcr.io/apelogic-ai/mcp-gw-agentgateway:0.5.4@sha256:b46972fa64735af1b303548a577e7d88c59c5c81205f5f266a7543e7b0932e18",
+        "github-wrapper": "ghcr.io/apelogic-ai/mcp-gw-github-wrapper:0.5.4@sha256:7d06cdbe123cdb5d7c70b68742645aef0a07c2ac4006bc5fa49e10db97620642",
+        "google-workspace": "ghcr.io/apelogic-ai/mcp-gw-google-workspace:0.5.4@sha256:00ead9664a4dedd000e94e69d06030311e63c4bd6f1811dcd4153b2eb6a12fb9"
       },
       "provenance": {
         "predicateType": "https://slsa.dev/provenance/v1",
         "signerWorkflow": "apelogic-ai/mcp-gw/.github/workflows/release.yml",
-        "sourceRef": "refs/tags/v0.5.1",
+        "sourceRef": "refs/tags/v0.5.4",
         "subjects": ["chart", "agentgateway", "github-wrapper", "google-workspace"]
       },
       "plannedFor": ["governed"]

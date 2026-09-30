@@ -92,9 +92,9 @@ combination.
 The generator also sets Steward's `images` from the BOM and keeps
 `execution.enabled=false` and `networkPolicy.enabled=true`. Steward keys are
 defined by its chart:
-[values](https://github.com/apelogic-ai/steward/blob/v0.3.4/charts/steward/values.yaml),
-[schema](https://github.com/apelogic-ai/steward/blob/v0.3.4/charts/steward/values.schema.json),
-[chart README](https://github.com/apelogic-ai/steward/blob/v0.3.4/charts/steward/README.md).
+[values](https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/values.yaml),
+[schema](https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/values.schema.json),
+[chart README](https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/README.md).
 
 ### Implemented (task-auth)
 
@@ -113,7 +113,7 @@ and forbids them for `profile: core`.
 | `edge.install` | whether the reference install installs the BOM-pinned Gateway API CRDs and Envoy Gateway | |
 | `edge.gateway` | the `parentRefs` of every route | `source: evaluation` creates an Envoy Gateway `GatewayClass` and `Gateway` with a certificate from a self-signed edge CA (evaluation only). `operator` attaches to your Gateway, which must allow routes from the Steward and exchange namespaces. |
 | `edge.clientCidrs` | github-oidc-exchange `networkPolicy.ingressCidrs` | The edge data plane's source addresses. |
-| `edge.stewardBackendCaConfigMap` | the Steward BackendTLSPolicy CA | The evaluation Gateway publishes it; otherwise your trust distribution must, as [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.4/charts/steward/README.md) describes. |
+| `edge.stewardBackendCaConfigMap` | the Steward BackendTLSPolicy CA | The evaluation Gateway publishes it; otherwise your trust distribution must, as [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/README.md) describes. |
 | `identityExchange.githubAudience` | github-oidc-exchange `config.githubExchangeAudience` | Clients discover it from the issuer metadata. |
 | `identityExchange.policy` | github-oidc-exchange `config.policyContract`, `config.policyConfigMapName`, `rolloutRevisions.githubPolicy`; Steward `taskIdentity.federatedSubjects.enabled` (true for v6) | The ConfigMap is yours to create; see the exchange's [integration guide](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.5/docs/integration.md). |
 | `identityExchange.keyring` | github-oidc-exchange `config.keyringSecretName`, `rolloutRevisions.githubKeyring` | The Secret is yours to create. |
@@ -148,7 +148,7 @@ The generator also sets, for browser-admin:
 
 - `config.apiserver.stewardRunRelease`, projected from the BOM's
   `products.steward-run` with the mapping in Steward's
-  [compatibility contract](https://github.com/apelogic-ai/steward/blob/v0.3.4/docs/installation/governed-platform-compatibility.md):
+  [compatibility contract](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/governed-platform-compatibility.md):
   `signatures.releaseManifest.schemaVersion` as `manifestSchemaVersion`,
   `version`, `workflow.repository` and `workflow.commit` as
   `workflowRepository` and `workflowCommit`, `action.commit` as
@@ -159,7 +159,7 @@ The generator also sets, for browser-admin:
 - `images.web` from the BOM, and `web.enabled`.
 - Steward's own edge, `web.httpRoute`, on the `edge.gateway` listener: the
   `steward-api` route with every public apiserver path from Steward's
-  [chart README](https://github.com/apelogic-ai/steward/blob/v0.3.4/charts/steward/README.md)
+  [chart README](https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/README.md)
   (the chart does not enforce the list, so the generator supplies all of it:
   `/.well-known/oauth-protected-resource` and
   `/admin/connections/github/callback` exactly, and the `/admin/api`,

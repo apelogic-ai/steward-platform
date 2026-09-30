@@ -32,10 +32,10 @@ built from source, the digest check verifies your lock instead, and the
 attestation and signature checks report those products as skipped: see
 [fork and build from source](fork-and-build.md#verification).
 
-## Attestation coverage: Steward 0.3.4
+## Attestation coverage: Steward 0.3.5
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.4:
+from `.github/workflows/release.yml` at the release tag. For 0.3.5:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -53,7 +53,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.4.tgz` (install the attested
+- the chart archive release asset `steward-0.3.5.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);
@@ -64,10 +64,10 @@ Not attested upstream, so CI does not verify them:
 Steward images and the chart carry only provenance attestations; there are no
 SBOM attestations on the registry artifacts.
 
-## Attestation coverage: mcp-gw 0.5.1
+## Attestation coverage: mcp-gw 0.5.4
 
 mcp-gw publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag `v0.5.1`, built on
+from `.github/workflows/release.yml` at the release tag `v0.5.4`, built on
 GitHub-hosted runners. CI verifies all four BOM artifacts: the OCI chart
 `oci://ghcr.io/apelogic-ai/charts/mcp-gateway` and the `agentgateway`,
 `github-wrapper` and `google-workspace` images.
@@ -75,12 +75,18 @@ GitHub-hosted runners. CI verifies all four BOM artifacts: the OCI chart
 mcp-gw is in the BOM with `plannedFor: ["governed"]`: pinned and verified, but
 no profile installs it and no end-to-end test exercises it until the governed
 profile exists ([#3](https://github.com/apelogic-ai/steward-platform/issues/3)).
-Its chart also references the upstream GitHub MCP Server image, which the
-release leaves to the operator to pin; the BOM does not pin it.
+Its chart also references the upstream GitHub MCP Server image, which the BOM
+does not pin. From 0.5.2 the release also mirrors that image, unchanged, into
+`ghcr.io/apelogic-ai/mcp-gw-github-mcp-server`; mcp-gw did not build it, so it
+carries no mcp-gw attestation. Its trust path is GitHub's upstream cosign
+signature plus digest equality between the upstream and mirror coordinates,
+as the release's `release-handoff.md` describes; verify both before using the
+mirror.
 
-Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files,
-which are release assets rather than attestations, and the chart archive
-release asset `mcp-gateway-0.5.1.tgz` (install the attested OCI chart instead).
+Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files
+(including the per-architecture index digests), which are release assets
+rather than attestations, and the chart archive release asset
+`mcp-gateway-0.5.4.tgz` (install the attested OCI chart instead).
 
 ## Signature coverage: github-oidc-exchange 0.7.5 and steward-run 0.7.6
 
