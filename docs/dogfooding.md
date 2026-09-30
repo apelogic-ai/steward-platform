@@ -12,7 +12,9 @@ Every task therefore has three jobs:
 1. **prepare**: a plain GitHub runner collects the data (for example with `gh`) and
    uploads it as the task input.
 2. **governed**: steward-run's reusable workflow exchanges the job's GitHub identity
-   for a Steward task token and runs the task. The agent writes its report under `out/`.
+   for a Steward task token and runs the task. The agent writes its report under `out/`;
+   from steward-run 0.7.6 the reusable workflow fails the job when the task writes
+   nothing there.
 3. **publish**: a plain job with the workflow token checks the report and publishes
    it. The agent itself never writes to GitHub.
 
