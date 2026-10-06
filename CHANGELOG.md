@@ -6,6 +6,36 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.10
+
+Release notes:
+[docs/releases/2026.10.0-alpha.10.md](docs/releases/2026.10.0-alpha.10.md).
+No breaking changes for the implemented profiles. A BOM bump to Steward 0.3.8
+and mcp-gw 0.5.7; the generator, helmfile, Flux output and platform values
+schema are unchanged.
+
+- Steward 0.3.8 (from 0.3.5; 0.3.6 and 0.3.7 were incomplete publications):
+  Next.js 16.3.6 for the critical advisory `GHSA-vcvr-r3jv-pc5j`, browser Run
+  now, member administration, automatic GitHub identity association through
+  Connect (governed only), `403 task_identity_unknown_user` for a verified v2
+  credential with an unknown canonical user, and additive migrations 0052 to
+  0063. Back up the database before upgrading; rolling back to 0.3.5 needs a
+  restore. Governed installs must set `spire.className` and choose one owner
+  for the OpenShell sandbox `ClusterSPIFFEID`. The generated values change only
+  in image tags and digests.
+- mcp-gw 0.5.7 (from 0.5.4; 0.5.5 published no chart), still
+  `plannedFor: governed`: numeric GitHub account ID in opt-in connection-status
+  v2 with forward-only migration 008, stable lifecycle error codes, and an
+  attested GitHub governance catalog asset that the BOM does not pin.
+- github-oidc-exchange 0.7.5 and steward-run 0.7.6 are unchanged.
+- The Flux examples and the example built-artifacts lock are regenerated for
+  the new coordinates, and Steward documentation links move to the v0.3.8 tag
+  with recomputed source line anchors. The walkthrough mentions the new member
+  page for identity association, and the task-auth profile page reflects the
+  new unknown-user answer. The migration runbook adds the alpha.10 upgrade
+  notes.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
+
 ## 2026.10.0-alpha.9
 
 Release notes:
