@@ -75,7 +75,7 @@ the Steward namespace:
 
 - **PostgreSQL 16 or later** ([tested versions](prerequisites.md#postgresql))
   and the Secret holding its URL, plus its CA for `verify-full`. Steward's
-  [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/installation-guide.md)
+  [installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md)
   lists the required database role.
 - **A certificate issuer** that your PKI approves (cert-manager mode), or the
   two TLS Secrets and the public CA bundle (customer-Secret mode).
@@ -103,12 +103,12 @@ In this order; the helmfile's `needs` and the Flux `dependsOn` enforce it.
 Then check the install the way the end-to-end test does: pods run the BOM
 digests, migrations applied, both certificates ready, the webhook denies an
 invalid `AgentRuntime`, and the API answers over verified TLS. Steward's
-[post-install checks](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/installation-guide.md#post-install-and-delivery-tests)
+[post-install checks](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md#post-install-and-delivery-tests)
 cover the rest.
 
 Helm creates no Steward users, grants, templates or Envelopes. Administration
 after install is Steward's:
-[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
+[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
 
 ## 6. Task authentication (task-auth profile)
 
@@ -191,7 +191,7 @@ and enrolling it late.
    GitHub claims that step 6 enrolls.
 4. **Wire Steward to the exchange**: Steward's task identity settings take the
    exchange's issuer, audience and public JWKS
-   ([Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/installation-guide.md)).
+   ([Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md)).
 5. **Provision authority in Steward**: the user signs in once, an
    administrator grants roles, authors Envelope templates and approves the
    user's Envelope. Record the user's canonical ID.
@@ -214,6 +214,6 @@ paths) get one page each in #3, linking the product-owned contracts.
 ## Where this came from
 
 This page supersedes Steward's
-[platform deployment order](https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/platform-deployment-order.md)
+[platform deployment order](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/platform-deployment-order.md)
 for the cross-product sequence. Steward will link here
 ([apelogic-ai/steward#140](https://github.com/apelogic-ai/steward/issues/140)).

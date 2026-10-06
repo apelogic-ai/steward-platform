@@ -2,8 +2,8 @@
 # helmfile inputs. Used by scripts/generate.sh; see that script for inputs.
 #
 # Every chart key set here is documented by the chart that owns it. The
-# Steward keys come from its v0.3.5 chart:
-# https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/values.yaml
+# Steward keys come from its v0.3.8 chart:
+# https://github.com/apelogic-ai/steward/blob/v0.3.8/charts/steward/values.yaml
 # and the github-oidc-exchange keys from its v0.7.5 chart:
 # https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.5/charts/github-oidc-exchange/values.yaml
 
@@ -198,7 +198,7 @@ def steward_api_hostname: "steward-apiserver.\(.namespaces.steward).svc.\(.clust
 
 # Steward's browser login callback: the configured origin plus this exact
 # path (Steward's browser session contract v1).
-# https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/browser-session-contract-v1.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/browser-session-contract-v1.md
 def browser_callback_path: "/admin/auth/callback";
 
 # Every public apiserver path, for Steward's own web.httpRoute: the task API and
@@ -208,8 +208,8 @@ def browser_callback_path: "/admin/auth/callback";
 # these seven entries in this order (the chart README's order), and exactly
 # [PathPrefix /] as webPaths; helm lint and helm template in
 # tests/generate/run.sh apply that schema.
-# https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/README.md
-# https://github.com/apelogic-ai/steward/blob/v0.3.5/charts/steward/values.schema.json
+# https://github.com/apelogic-ai/steward/blob/v0.3.8/charts/steward/README.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.8/charts/steward/values.schema.json
 def steward_api_paths:
   [
     {type: "Exact", value: "/.well-known/oauth-protected-resource"},
@@ -231,7 +231,7 @@ def edge_parent_refs:
 # manifestSchemaVersion, image -> governedJobContainerImage). Every field comes
 # from the signed release manifest (scripts/verify-signatures.sh); the image
 # is the runner image without its tag, as the manifest names it.
-# https://github.com/apelogic-ai/steward/blob/v0.3.5/docs/installation/governed-platform-compatibility.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/governed-platform-compatibility.md
 def steward_run_release($bom):
   $bom.products["steward-run"] as $run
   | ($run.images.runner | image_parts) as $image

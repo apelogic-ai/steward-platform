@@ -32,10 +32,10 @@ built from source, the digest check verifies your lock instead, and the
 attestation and signature checks report those products as skipped: see
 [fork and build from source](fork-and-build.md#verification).
 
-## Attestation coverage: Steward 0.3.5
+## Attestation coverage: Steward 0.3.8
 
 Steward publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag. For 0.3.5:
+from `.github/workflows/release.yml` at the release tag. For 0.3.8:
 
 Attested, and verified by CI because they are in the BOM:
 
@@ -53,7 +53,7 @@ Steward release notes describe):
 
 Not attested upstream, so CI does not verify them:
 
-- the chart archive release asset `steward-0.3.5.tgz` (install the attested
+- the chart archive release asset `steward-0.3.8.tgz` (install the attested
   OCI chart instead);
 - `steward-registry-lock.sh` (its SHA-256 is in the attested
   `release-handoff.json` and in a `.sha256` asset);
@@ -64,10 +64,10 @@ Not attested upstream, so CI does not verify them:
 Steward images and the chart carry only provenance attestations; there are no
 SBOM attestations on the registry artifacts.
 
-## Attestation coverage: mcp-gw 0.5.4
+## Attestation coverage: mcp-gw 0.5.7
 
 mcp-gw publishes SLSA provenance attestations (`https://slsa.dev/provenance/v1`)
-from `.github/workflows/release.yml` at the release tag `v0.5.4`, built on
+from `.github/workflows/release.yml` at the release tag `v0.5.7`, built on
 GitHub-hosted runners. CI verifies all four BOM artifacts: the OCI chart
 `oci://ghcr.io/apelogic-ai/charts/mcp-gateway` and the `agentgateway`,
 `github-wrapper` and `google-workspace` images.
@@ -81,12 +81,14 @@ does not pin. From 0.5.2 the release also mirrors that image, unchanged, into
 carries no mcp-gw attestation. Its trust path is GitHub's upstream cosign
 signature plus digest equality between the upstream and mirror coordinates,
 as the release's `release-handoff.md` describes; verify both before using the
-mirror.
+mirror. From 0.5.7 the release also publishes an attested GitHub governance
+catalog (`github-governance-catalog.json`) for the pinned GitHub MCP Server; the
+BOM does not pin it.
 
 Not verified by CI: the SPDX SBOMs, vulnerability reports and `.digest` files
 (including the per-architecture index digests), which are release assets
 rather than attestations, and the chart archive release asset
-`mcp-gateway-0.5.4.tgz` (install the attested OCI chart instead).
+`mcp-gateway-0.5.7.tgz` (install the attested OCI chart instead).
 
 ## Signature coverage: github-oidc-exchange 0.7.5 and steward-run 0.7.6
 
