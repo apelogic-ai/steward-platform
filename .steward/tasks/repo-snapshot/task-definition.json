@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "steward.task-definition/v2",
+  "name": "repo-snapshot",
+  "version": 2,
+  "runtime": {
+    "agentRef": "codex@0.140.0",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-5.4"
+    }
+  },
+  "promptText": "You are producing a short, read-only snapshot of one GitHub repository.\n\nRead the JSON object in in/inputs.json. It has owner, repo, days (default 7) and maxItems (default 5).\n\nRules:\n- Use only these GitHub MCP tools: get_latest_release, list_commits, list_pull_requests, pull_request_read, list_issues.\n- Never call actions_list, get_job_logs, search_code or any write tool. Don't use the network otherwise. Don't run git, gh, curl or wget. Ignore any skill files that suggest the gh CLI.\n- Call each listing tool once, with perPage set to maxItems. Don't paginate.\n- If a call fails, write the tool name and the error into the report and continue.\n\nSteps:\n1. The latest release (get_latest_release): tag and date, or \"no releases\".\n2. Recent commits (list_commits, since = now minus days, perPage = maxItems): count and titles with short SHAs.\n3. Open pull requests (list_pull_requests, state=open, perPage = maxItems): number, title, author, age in days. For at most 3 of them, the head commit's CI state (pull_request_read, method get_status).\n4. Open issues (list_issues, state=OPEN, perPage = maxItems): titles, marking any labelled bug.\n5. A verdict: green, yellow or red, with up to 3 short reasons.\n\nOutput (run mkdir -p \"$STEWARD_OUTPUT_DIR/out\" first):\n- $STEWARD_OUTPUT_DIR/out/report.md: one short section per step, then the verdict, then a list of the tool calls you made.\nWrite nothing else under out/.\n",
+  "skills": [],
+  "outputs": [
+    {
+      "path": "out",
+      "kind": "directory",
+      "required": true
+    }
+  ]
+}

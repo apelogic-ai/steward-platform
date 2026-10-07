@@ -6,6 +6,12 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+- Outside the BOM, a second dogfood task, `repo-snapshot`: the version 2
+  single-file package in `.steward/tasks/repo-snapshot/` and the
+  `repo-snapshot` workflow, which runs it on demand as a governed Steward run
+  through steward-run 0.8.1's `package-path` input. See
+  [docs/dogfooding.md](docs/dogfooding.md#repo-snapshot).
+
 ## 2026.10.0-alpha.11
 
 Release notes:
