@@ -6,6 +6,36 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.11
+
+Release notes:
+[docs/releases/2026.10.0-alpha.11.md](docs/releases/2026.10.0-alpha.11.md).
+No breaking changes for the implemented profiles. A BOM bump to Steward 0.3.11
+and steward-run 0.8.1; the generator, helmfile, Flux output and platform values
+schema are unchanged.
+
+- Steward 0.3.11 (from 0.3.8; 0.3.9 and 0.3.10 must not be used): two-file
+  repository packages (`packagePath`, inline `promptText`, advertised
+  `steward_package_path_supported`), Task pages and an immutable Task library,
+  governed GitHub repository automation (publish as PR, detect, dispatch, run
+  status), the seven-step Get started journey, a configurable starter task, and
+  execution logs kept out of output archives. Additive migrations 0064 to 0067;
+  back up the database before upgrading. Generated values change only in image
+  tags and digests.
+- steward-run 0.8.1 (from 0.7.6; 0.8.0 must not be used): `package-path` and
+  `execution-log` inputs gated on Steward's package-path capability, a refreshed
+  signed job container, and a pre-tag release preflight.
+- Steward's projected `stewardRunRelease` now names steward-run 0.8.1, so
+  Steward-generated callers use the two-file `package-path` form; existing
+  `invocation-path` callers keep working.
+- github-oidc-exchange 0.7.5 and mcp-gw 0.5.7 are unchanged.
+- The Flux examples and the example built-artifacts lock are regenerated;
+  Steward and steward-run documentation links move to the new release tags with
+  recomputed source line anchors; the migration runbook adds the alpha.11
+  upgrade notes; the dogfood release summary workflow calls steward-run 0.8.1's
+  self-hosted reusable workflow.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
+
 ## 2026.10.0-alpha.10
 
 Release notes:

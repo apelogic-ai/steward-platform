@@ -31,7 +31,7 @@ jq -r '.products | to_entries[] | "\(.key)\t\(.value.version)\t\(.value.source)\
 
 | Product | Deployed by | How to build it (product documentation, at the BOM release) |
 |---|---|---|
-| Steward | every profile | [Build and publish from a fork](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md#build-and-publish-from-a-fork); the Codex reference runtime image: [Codex reference runtime](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/codex-reference-runtime.md) |
+| Steward | every profile | [Build and publish from a fork](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/installation/installation-guide.md#build-and-publish-from-a-fork); the Codex reference runtime image: [Codex reference runtime](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/installation/codex-reference-runtime.md) |
 | github-oidc-exchange | task-auth, browser-admin | [Build/publish fork-owned image and chart](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.5/docs/installation.md#1-buildpublish-fork-owned-image-and-chart) |
 
 Build from the BOM commit, not from a branch or from a tag you retag
@@ -48,12 +48,12 @@ profile change does not silently fall back to upstream artifacts.
 Not built: **steward-run** and **mcp-gw**. The platform does not deploy
 steward-run's artifacts; it projects steward-run's signed release coordinates
 into Steward (`config.apiserver.stewardRunRelease`), and Steward's
-[contract](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/governed-platform-compatibility.md)
+[contract](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/installation/governed-platform-compatibility.md)
 requires that projection to equal the signed BOM coordinates, so they stay
-upstream. steward-run 0.7.6 documents its own
-[fork rebuild](https://github.com/apelogic-ai/steward-run/blob/v0.7.6/docs/customer-rebuild.md)
+upstream. steward-run 0.8.1 documents its own
+[fork rebuild](https://github.com/apelogic-ai/steward-run/blob/v0.8.1/docs/customer-rebuild.md)
 and publishes a vendorable reusable workflow for callers of a private fork
-([private fork consumed by another repository](https://github.com/apelogic-ai/steward-run/blob/v0.7.6/docs/installation.md#private-fork-consumed-by-another-repository));
+([private fork consumed by another repository](https://github.com/apelogic-ai/steward-run/blob/v0.8.1/docs/installation.md#private-fork-consumed-by-another-repository));
 how an operator who uses only their own builds would run governed jobs with a
 steward-run build is not decided yet
 ([#35](https://github.com/apelogic-ai/steward-platform/issues/35)). mcp-gw is pinned for the planned governed profile and no profile
@@ -96,8 +96,8 @@ scripts/built-lock-from-digests.sh --profile task-auth \
   steward.source=https://github.com/example-org/steward \
   steward.commit="$(jq -r .products.steward.commit bom/bom.json)" \
   steward.chart=oci://registry.example.com/charts/steward@sha256:<digest> \
-  steward.images.apiserver=registry.example.com/steward:0.3.8-apiserver@sha256:<digest> \
-  steward.images.controller=registry.example.com/steward:0.3.8-controller@sha256:<digest> \
+  steward.images.apiserver=registry.example.com/steward:0.3.11-apiserver@sha256:<digest> \
+  steward.images.controller=registry.example.com/steward:0.3.11-controller@sha256:<digest> \
   ... \
   github-oidc-exchange.source=https://github.com/example-org/github-oidc-exchange \
   github-oidc-exchange.commit="$(jq -r '.products["github-oidc-exchange"].commit' bom/bom.json)" \

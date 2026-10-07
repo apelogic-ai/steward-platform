@@ -56,7 +56,7 @@ and they are not the same thing:
   cluster
   ([apelogic-ai/steward#177](https://github.com/apelogic-ai/steward/issues/177),
   [apelogic-ai/github-oidc-exchange#73](https://github.com/apelogic-ai/github-oidc-exchange/issues/73)).
-  Only the steward-run runner chart declares a ceiling: 0.7.6 accepts
+  Only the steward-run runner chart declares a ceiling: 0.8.1 accepts
   `<1.37.0-0`
   ([apelogic-ai/steward-run#62](https://github.com/apelogic-ai/steward-run/issues/62)),
   so a platform that includes the runner (governed) cannot install on 1.37 or
@@ -130,7 +130,7 @@ tested: 16.14 and 17.11**. The chart does not create one.
   names another tested version.
 
 See the
-[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.8/docs/installation/installation-guide.md)
+[Steward installation guide](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/installation/installation-guide.md)
 for the required database role. That guide still lists PostgreSQL 16 without a
 minimum; stating the same minimum and tested versions there is tracked in
 [apelogic-ai/steward#188](https://github.com/apelogic-ai/steward/issues/188).
@@ -144,8 +144,8 @@ the browser.
 
 - Steward's `browserAuth.google.organizationId` is a Steward-chosen name, not
   a Google organization ID: `org_` followed by up to 60 lowercase letters,
-  digits, `_` or `-`. The Steward 0.3.8 chart schema enforces this
-  ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.8/charts/steward/README.md)).
+  digits, `_` or `-`. The Steward 0.3.11 chart schema enforces this
+  ([chart README](https://github.com/apelogic-ai/steward/blob/v0.3.11/charts/steward/README.md)).
 - The OAuth client is a Google Cloud "Web application" client in the
   Workspace organization, with an Internal consent screen and the single
   redirect URI `<Steward origin>/admin/auth/callback`. Google accepts
