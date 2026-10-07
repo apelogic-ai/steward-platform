@@ -1,0 +1,99 @@
+# Dogfood task repo-snapshot: a short, read-only snapshot of one public GitHub repository
+# (latest release, recent commits, open pull requests and issues, and a verdict).
+# The task package is the single file .steward/tasks/repo-snapshot/task-definition.json,
+# read by Steward at the triggering commit. Every job is skipped until the repository
+# variable STEWARD_API_URL is set. See docs/dogfooding.md.
+name: repo-snapshot
+
+'on':
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: Owner of the public repository to snapshot
+        required: true
+        default: apelogic-ai
+        type: string
+      repo:
+        description: Name of the public repository to snapshot
+        required: true
+        default: steward-run
+        type: string
+      days:
+        description: Days of commit history to include (1 to 90)
+        required: true
+        default: 14
+        type: number
+      maxItems:
+        description: Maximum items per listing (1 to 20)
+        required: true
+        default: 5
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: repo-snapshot
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Build the repo-snapshot input
+    if: ${{ vars.STEWARD_API_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate and encode inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ inputs.owner }}
+          REPO: ${{ inputs.repo }}
+          DAYS: ${{ inputs.days }}
+          MAX_ITEMS: ${{ inputs.maxItems }}
+        run: scripts/dogfood/repo-snapshot-inputs.sh "$OWNER" "$REPO" "$DAYS" "$MAX_ITEMS" steward-input
+      - name: Upload task input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: repo-snapshot-input
+          path: steward-input/
+          if-no-files-found: error
+          retention-days: 1
+
+  governed:
+    name: Run the governed repo-snapshot task
+    needs: prepare
+    permissions:
+      contents: read
+      id-token: write
+    uses: apelogic-ai/steward-run/.github/workflows/steward-task-self-hosted.yml@26200e28d078e46db7b29fb29c6b48383e09dbe1 # v0.8.1
+    with:
+      runner-label: ${{ vars.STEWARD_RUNNER_LABEL }}
+      package-path: .steward/tasks/repo-snapshot/task-definition.json
+      execution-log: full
+      input-artifact: repo-snapshot-input
+      output-artifact: repo-snapshot-output
+      steward-api-url: ${{ vars.STEWARD_API_URL }}
+
+  summary:
+    name: Show the repo-snapshot report
+    needs: governed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download governed output
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: repo-snapshot-output
+          path: output
+      - name: Append the report to the job summary
+        run: |
+          set -euo pipefail
+          report="$(find output -type f -name report.md -size +0c -print -quit)"
+          test -n "$report" || { echo "the task produced no report.md" >&2; exit 1; }
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
