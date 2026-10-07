@@ -73,7 +73,7 @@ jobs:
     with:
       runner-label: ${{ vars.STEWARD_RUNNER_LABEL }}
       package-path: .steward/tasks/repo-snapshot/task-definition.json
-      execution-log: full
+      # Re-enable execution-log: full once Steward ships the transcript-in-archive fix (0.3.12).
       input-artifact: repo-snapshot-input
       output-artifact: repo-snapshot-output
       steward-api-url: ${{ vars.STEWARD_API_URL }}
