@@ -11,6 +11,9 @@ is authoritative for every pinned version and digest.
   `repo-snapshot` workflow, which runs it on demand as a governed Steward run
   through steward-run 0.8.1's `package-path` input. See
   [docs/dogfooding.md](docs/dogfooding.md#repo-snapshot).
+- The `repo-snapshot` workflow no longer requests `execution-log: full`:
+  Steward 0.3.11 leaves the transcript out of the output archive, which
+  steward-run 0.8.1 requires in that mode. It returns with Steward 0.3.12.
 
 ## 2026.10.0-alpha.11
 

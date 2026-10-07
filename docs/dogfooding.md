@@ -67,9 +67,10 @@ writes them with `jq` as `inputs.json` at the root of the input artifact. The
 reusable workflow downloads that artifact into `in/` and steward-run archives `in/`,
 which Steward unpacks in the agent's working directory, so the agent reads
 `in/inputs.json`. The `summary` job adds `out/report.md` to the job summary. The run
-uses `execution-log: full`, so the agent's transcript is replayed in the governed
-job's log, which is public like the rest of this repository's Actions logs. To
-preview the input locally:
+does not request an execution log: with Steward 0.3.11 the output archive omits the
+transcript, which steward-run 0.8.1 requires for `execution-log: full`. It is
+re-enabled once Steward 0.3.12 restores the transcript. To preview the input
+locally:
 
 ```bash
 SKIP_VISIBILITY_CHECK=1 scripts/dogfood/repo-snapshot-inputs.sh apelogic-ai steward-run 14 5 /tmp/repo-snapshot-input
