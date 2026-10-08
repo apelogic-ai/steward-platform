@@ -6,14 +6,37 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.12
+
+Release notes:
+[docs/releases/2026.10.0-alpha.12.md](docs/releases/2026.10.0-alpha.12.md).
+No breaking changes for the implemented profiles. A BOM bump to Steward 0.3.13;
+the generator, helmfile, Flux output and platform values schema are unchanged.
+
+- Steward 0.3.13 (from 0.3.11; includes 0.3.12, which no BOM pinned): governed
+  GitHub repository listing, run status and dispatch fixed against the pinned
+  GitHub MCP server, with new bridge failure categories and result bounds; a
+  default repository picker that lists the admitted source repositories through
+  the source GitHub App (its installation must include each admitted
+  repository); one shared repository listing across Get started and task
+  publication; the `execution-log: full` transcript restored for steward-run
+  0.8.1 callers; and structured latency lines for governed connection
+  operations. No migrations since 0.3.11 and no Helm value changes; the bridge
+  image moves with the release. Generated values change only in image tags and
+  digests.
+- steward-run 0.8.1, github-oidc-exchange 0.7.5 and mcp-gw 0.5.7 are unchanged.
+- The Flux examples and the example built-artifacts lock are regenerated;
+  Steward documentation links move to the v0.3.13 tag with recomputed source
+  line anchors; the migration runbook adds the alpha.12 upgrade notes.
 - Outside the BOM, a second dogfood task, `repo-snapshot`: the version 2
   single-file package in `.steward/tasks/repo-snapshot/` and the
   `repo-snapshot` workflow, which runs it on demand as a governed Steward run
   through steward-run 0.8.1's `package-path` input. See
-  [docs/dogfooding.md](docs/dogfooding.md#repo-snapshot).
-- The `repo-snapshot` workflow no longer requests `execution-log: full`:
-  Steward 0.3.11 leaves the transcript out of the output archive, which
-  steward-run 0.8.1 requires in that mode. It returns with Steward 0.3.12.
+  [docs/dogfooding.md](docs/dogfooding.md#repo-snapshot). It does not request
+  `execution-log: full` yet: Steward 0.3.11 and 0.3.12 leave the transcript out
+  of the output archive, which steward-run 0.8.1 requires in that mode. It
+  returns once the deployment it runs against is on Steward 0.3.13.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
 
 ## 2026.10.0-alpha.11
 

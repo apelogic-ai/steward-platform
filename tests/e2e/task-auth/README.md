@@ -82,19 +82,19 @@ The steward-run action is a workflow step, so the test has phases around it:
 ## Why `403 task_identity_unassociated`
 
 It is the strongest outcome a test can reach without a Steward canonical
-user, and it can only follow successful authentication. In Steward 0.3.11,
+user, and it can only follow successful authentication. In Steward 0.3.13,
 `POST /v1/tasks` authenticates before it reads the request
-([`submit_task`](https://github.com/apelogic-ai/steward/blob/v0.3.11/crates/steward-apiserver/src/tasks.rs#L1984-L2025),
-[`resolve_task_identity`](https://github.com/apelogic-ai/steward/blob/v0.3.11/crates/steward-apiserver/src/tasks.rs#L3981-L4005)).
+([`submit_task`](https://github.com/apelogic-ai/steward/blob/v0.3.13/crates/steward-apiserver/src/tasks.rs#L2125-L2166),
+[`resolve_task_identity`](https://github.com/apelogic-ai/steward/blob/v0.3.13/crates/steward-apiserver/src/tasks.rs#L4122-L4146)).
 For a `steward-task-v3` token, the resolver
-([`IdentityTaskIdentityResolver::resolve`](https://github.com/apelogic-ai/steward/blob/v0.3.11/crates/steward-apiserver/src/tasks.rs#L862-L959))
+([`IdentityTaskIdentityResolver::resolve`](https://github.com/apelogic-ai/steward/blob/v0.3.13/crates/steward-apiserver/src/tasks.rs#L920-L1017))
 first verifies the ES256 signature against the configured JWKS, the exact
 issuer, the single exact audience, the lifetime, the `jti` and the signed
 provenance (`verify_identity_task_token`); only then does it record the
 subject and look up its association. An unassociated subject maps to
 `403 task_identity_unassociated`
-([`ApiError` response](https://github.com/apelogic-ai/steward/blob/v0.3.11/crates/steward-apiserver/src/lib.rs#L2678-L2689)),
-as the [task submission API](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/task-submission-api.md#production-identity-boundary)
+([`ApiError` response](https://github.com/apelogic-ai/steward/blob/v0.3.13/crates/steward-apiserver/src/lib.rs#L2691-L2702)),
+as the [task submission API](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/task-submission-api.md#production-identity-boundary)
 documents. Every verification failure is `401` instead.
 
 An associated subject is not reachable: association needs an existing
@@ -102,7 +102,7 @@ canonical user, which only a Google browser login creates, and the
 browser-session admin API. With one, `task-auth-probe@1` (a versioned
 Workflow reference) would next be refused in core mode with `503` "Task
 submission is disabled during the staged orchestration rollout"
-([`submit`](https://github.com/apelogic-ai/steward/blob/v0.3.11/crates/steward-apiserver/src/tasks.rs#L2423-L2473)).
+([`submit`](https://github.com/apelogic-ai/steward/blob/v0.3.13/crates/steward-apiserver/src/tasks.rs#L2564-L2614)).
 With a `steward-task-v2` token (policy v5) an unknown canonical user is a
 `401`, indistinguishable from a bad token, which is why the profile uses v6.
 

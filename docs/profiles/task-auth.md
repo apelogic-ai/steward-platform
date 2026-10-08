@@ -54,7 +54,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 
 ## Choices, and why
 
-- **Policy v6 and `steward-task-v3`.** Steward 0.3.11's release handoff names
+- **Policy v6 and `steward-task-v3`.** Steward 0.3.13's release handoff names
   v5 as its identity-policy contract, and v5 is the exchange's default. But a
   v5 policy must map the actor to a Steward canonical user, and canonical users
   are created only by a Google browser login. Since 0.3.6 Steward answers a
@@ -63,7 +63,7 @@ the exchange fetches GitHub's public JWKS over the internet.
   needs a browser login before v5 can reach admission. With v6, Steward verifies the token first and
   then gives a specific, documented answer for an authenticated subject that
   is not yet associated with a user: `403 task_identity_unassociated`
-  ([Steward task submission API, v0.3.11](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/task-submission-api.md#production-identity-boundary);
+  ([Steward task submission API, v0.3.13](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/task-submission-api.md#production-identity-boundary);
   [exchange consumer contracts, v0.7.5](https://github.com/apelogic-ai/github-oidc-exchange/blob/v0.7.5/docs/consumer-contract-v1.md)).
 - **The policy admits only this repository's workflow**: the numeric owner
   and repository IDs, and the exact subject, event and ref observed from the
@@ -86,7 +86,7 @@ the exchange fetches GitHub's public JWKS over the internet.
 - **Steward's edge route comes from this repository.** Steward's own
   `web.httpRoute` requires its browser web UI, which requires Google browser
   login. `charts/steward-edge` routes only the task API paths from
-  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.11/charts/steward/README.md),
+  [Steward's chart README](https://github.com/apelogic-ai/steward/blob/v0.3.13/charts/steward/README.md),
   and the edge namespace is admitted through `apiserverIngressNamespaces`.
 - **The action runs by path.** GitHub cannot take a `uses:` reference from an
   expression, so the job checks out `apelogic-ai/steward-run` at the BOM

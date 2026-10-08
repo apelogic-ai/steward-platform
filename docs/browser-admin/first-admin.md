@@ -3,10 +3,10 @@
 How the first Steward administrator comes to exist on a browser-admin
 install, and how administration continues after that. Helm creates no users,
 grants, templates or Envelopes. Steward owns this procedure; this page is the
-platform's order of steps, with links to Steward's contracts at v0.3.11:
-[browser session contract](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/browser-session-contract-v1.md#first-local-rbac-grant),
-[User Envelope and RBAC administration](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/operator-envelope-administration.md),
-[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
+platform's order of steps, with links to Steward's contracts at v0.3.13:
+[browser session contract](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/browser-session-contract-v1.md#first-local-rbac-grant),
+[User Envelope and RBAC administration](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/operator-envelope-administration.md),
+[post-install administration](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/installation/installation-guide.md#post-install-administration-not-helm-installation).
 
 It assumes the install and the HTTPS path from [local access](local-access.md)
 (or your own edge), and the `steward` namespace; adjust names to your
@@ -67,7 +67,7 @@ image: the image's entrypoint, with `rbac`, `templates` and `envelopes`
 subcommands. It is a client of Steward's bearer-authenticated operator API
 (`/admin/operator/v1`, routed to the apiserver by the edge) and never
 connects to the database. Its configuration
-([Steward's guide](https://github.com/apelogic-ai/steward/blob/v0.3.11/docs/operator-envelope-administration.md#supported-operator-cli)):
+([Steward's guide](https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/operator-envelope-administration.md#supported-operator-cli)):
 
 | Variable | Value |
 |---|---|
@@ -100,7 +100,7 @@ operator API authenticates the bearer with Kubernetes TokenReview and
 requires Steward's configured administrator group, which the chart does not
 expose and which ServiceAccount tokens cannot carry; a verified Identity task
 token with that group is the other accepted form. Neither is a documented
-operator procedure in Steward 0.3.11
+operator procedure in Steward 0.3.13
 ([apelogic-ai/steward#146](https://github.com/apelogic-ai/steward/issues/146)).
 Until that issue lands, administer through the browser (step 3) and use
 `bootstrap-rbac` for grants; this page will add the credential step when

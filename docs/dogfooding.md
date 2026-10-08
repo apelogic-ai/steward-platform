@@ -67,9 +67,10 @@ writes them with `jq` as `inputs.json` at the root of the input artifact. The
 reusable workflow downloads that artifact into `in/` and steward-run archives `in/`,
 which Steward unpacks in the agent's working directory, so the agent reads
 `in/inputs.json`. The `summary` job adds `out/report.md` to the job summary. The run
-does not request an execution log: with Steward 0.3.11 the output archive omits the
-transcript, which steward-run 0.8.1 requires for `execution-log: full`. It is
-re-enabled once Steward 0.3.12 restores the transcript. To preview the input
+does not request an execution log: with Steward 0.3.11 and 0.3.12 the output archive
+omits the transcript, which steward-run 0.8.1 requires for `execution-log: full`.
+Steward 0.3.13 (platform `2026.10.0-alpha.12`) restores it; the workflow re-enables
+the log once the deployment it runs against is on 0.3.13. To preview the input
 locally:
 
 ```bash
