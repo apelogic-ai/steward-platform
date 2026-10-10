@@ -29,9 +29,9 @@
 #     "artifacts": [
 #       {"id": "products.steward.images.apiserver", "class": "productImages",
 #        "type": "oci", "artifact": "image",
-#        "source": "ghcr.io/apelogic-ai/steward:0.3.13-apiserver",
+#        "source": "ghcr.io/apelogic-ai/steward:0.3.15-apiserver",
 #        "digest": "sha256:...", "sourceRef": "ghcr.io/apelogic-ai/steward@sha256:...",
-#        "target": "<mirror>/apelogic-ai/steward:0.3.13-apiserver",
+#        "target": "<mirror>/apelogic-ai/steward:0.3.15-apiserver",
 #        "targetRef": "<mirror>/apelogic-ai/steward@sha256:...", "mirrored": true},
 #       {"id": "...manifests.0", "class": "manifests", "type": "http",
 #        "source": URL, "digest": "sha256:...", "target": URL, ...},

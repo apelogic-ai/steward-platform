@@ -6,6 +6,34 @@ is authoritative for every pinned version and digest.
 
 ## Unreleased
 
+## 2026.10.0-alpha.13
+
+Release notes:
+[docs/releases/2026.10.0-alpha.13.md](docs/releases/2026.10.0-alpha.13.md).
+No breaking changes for the implemented profiles. A BOM bump to Steward 0.3.15;
+the generator, helmfile, Flux output and platform values schema are unchanged.
+
+- Steward 0.3.15 (from 0.3.13; includes 0.3.14, which no BOM pinned): the
+  Connections bridge opens an MCP Streamable HTTP session before its tool
+  calls, so governed GitHub publication, workflow detection, dispatch, run
+  status, rerun and repository search work behind the session-enforcing mcp-gw
+  agentgateway, with a new `bridge-gateway-session` failure category; governed
+  Git and scratch Task workspaces, bounded by the new chart `workspace` values,
+  each User Envelope and the Task; opt-in managed inference
+  (`inference.mode: managed`) with per-user encrypted credentials resolved by
+  Mint, stock mode staying the default; and Steward's governed-connections
+  end-to-end test now runs through the mcp-gw 0.5.7 agentgateway. Additive
+  migration 0068 runs on upgrade and stays on rollback; once a Task with
+  workspace evidence is stored, rolling back to 0.3.14 or earlier needs a
+  database restore (the implemented profiles admit no Task). The new Helm
+  values keep their defaults; generated values change only in image tags and
+  digests, and every image, the bridge included, moves with the release.
+- steward-run 0.8.1, github-oidc-exchange 0.7.5 and mcp-gw 0.5.7 are unchanged.
+- The Flux examples and the example built-artifacts lock are regenerated;
+  Steward documentation links move to the v0.3.15 tag with recomputed source
+  line anchors; the migration runbook adds the alpha.13 upgrade notes.
+- Kubernetes: the tested window stays 1.32 to 1.34 (#34).
+
 ## 2026.10.0-alpha.12
 
 Release notes:
