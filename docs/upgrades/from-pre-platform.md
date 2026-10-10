@@ -3,8 +3,8 @@
 This runbook is for operators who installed the products before this
 repository existed. It covers the move from the 0.2.6-era set to the release
 set of platform BOM `2026.10.0-alpha.6` (the same product releases as
-`2026.10.0-alpha.5`). The current BOM, `2026.10.0-alpha.12`, pins newer
-releases of every product (Steward 0.3.13, github-oidc-exchange 0.7.5,
+`2026.10.0-alpha.5`). The current BOM, `2026.10.0-alpha.13`, pins newer
+releases of every product (Steward 0.3.15, github-oidc-exchange 0.7.5,
 steward-run 0.8.1, mcp-gw 0.5.7): finish this runbook first, then apply
 [upgrading from 2026.10.0-alpha.6](../releases/2026.10.0-alpha.7.md#upgrading-from-2026100-alpha6)
 in the alpha.7 release notes,
@@ -15,9 +15,11 @@ in the alpha.9 release notes,
 [upgrading from 2026.10.0-alpha.9](../releases/2026.10.0-alpha.10.md#upgrading-from-2026100-alpha9)
 in the alpha.10 release notes,
 [upgrading from 2026.10.0-alpha.10](../releases/2026.10.0-alpha.11.md#upgrading-from-2026100-alpha10)
-in the alpha.11 release notes and
+in the alpha.11 release notes,
 [upgrading from 2026.10.0-alpha.11](../releases/2026.10.0-alpha.12.md#upgrading-from-2026100-alpha11)
-in the alpha.12 release notes, in that order.
+in the alpha.12 release notes and
+[upgrading from 2026.10.0-alpha.12](../releases/2026.10.0-alpha.13.md#upgrading-from-2026100-alpha12)
+in the alpha.13 release notes, in that order.
 
 | Product | From (0.2.6-era) | To |
 |---|---|---|

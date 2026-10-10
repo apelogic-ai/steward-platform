@@ -50,7 +50,7 @@ helmfile_file="${repo_root}/helmfile/helmfile.yaml.gotmpl"
 
 # Steward's browser session contract v1: the login route, the callback path
 # and the OAuth flow cookie (the Secure deployment name).
-# https://github.com/apelogic-ai/steward/blob/v0.3.13/docs/browser-session-contract-v1.md
+# https://github.com/apelogic-ai/steward/blob/v0.3.15/docs/browser-session-contract-v1.md
 login_path=/admin/auth/login
 callback_path=/admin/auth/callback
 flow_cookie=__Secure-steward-oidc-flow

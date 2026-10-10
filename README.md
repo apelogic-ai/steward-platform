@@ -150,10 +150,10 @@ To check your own mirror of the BOM, see
 
 ## Status
 
-Pre-release. The current BOM is `2026.10.0-alpha.12`: see its
-[release notes](docs/releases/2026.10.0-alpha.12.md) and the
+Pre-release. The current BOM is `2026.10.0-alpha.13`: see its
+[release notes](docs/releases/2026.10.0-alpha.13.md) and the
 [changelog](CHANGELOG.md). It pins the core, task-auth and browser-admin
-profiles: Steward 0.3.13, github-oidc-exchange 0.7.5 and steward-run 0.8.1,
+profiles: Steward 0.3.15, github-oidc-exchange 0.7.5 and steward-run 0.8.1,
 with cert-manager, Envoy Gateway 1.9.1, the Gateway API CRDs and, for
 evaluation, PostgreSQL 16.14 and 17.11. mcp-gw 0.5.7 is pinned for the
 governed profile but not installed or tested yet. The governed profile, which
